@@ -18,6 +18,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import sys
 import threading
 from http import HTTPStatus
@@ -929,6 +930,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 if not isinstance(location_scope, dict) or not all(str(location_scope.get(key, "")).strip() for key in ("country", "country_code", "state", "state_code", "city")):
                     self.send_json({"error": "Select a valid country, state and city before starting discovery."}, HTTPStatus.BAD_REQUEST)
                     return
+                if not re.fullmatch(r"[A-Z]{2}", str(location_scope.get("country_code", ""))) or not re.fullmatch(r"[A-Z0-9-]{1,8}", str(location_scope.get("state_code", ""))):
+                    self.send_json({"error": "The selected country or state code is invalid."}, HTTPStatus.BAD_REQUEST)
+                    return
+                location = ", ".join(str(location_scope[key]).strip() for key in ("city", "state", "country"))
                 if not target or not location or not campaign_name:
                     self.send_json({"error": "Target, location and campaign name are required."}, HTTPStatus.BAD_REQUEST)
                     return
