@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -837,8 +838,21 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_response(HTTPStatus.NO_CONTENT)
         self.end_headers()
 
+    def _require_api_auth(self) -> bool:
+        secret = os.getenv("FILI_API_TOKEN", "").strip()
+        if not secret:
+            return True
+        authorization = self.headers.get("Authorization", "")
+        supplied = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+        if hmac.compare_digest(supplied, secret):
+            return True
+        self.send_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+        return False
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/") and not self._require_api_auth():
+            return
         if parsed.path in ["/", "/index.html"]:
             payload = HTML_PAGE.encode("utf-8")
             self.send_response(HTTPStatus.OK)
@@ -880,6 +894,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if not self._require_api_auth():
+            return
         try:
             content_length = int(self.headers.get("Content-Length", 0))
         except ValueError:
@@ -992,6 +1008,8 @@ def main():
     parser.add_argument("--port", type=int, default=8000, help="Port to bind dashboard server (default: 8000)")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host interface (default: 127.0.0.1)")
     args = parser.parse_args()
+    if args.host not in {"127.0.0.1", "localhost", "::1"} and not os.getenv("FILI_API_TOKEN", "").strip():
+        parser.error("FILI_API_TOKEN is required when binding the API beyond localhost.")
 
     SCHEDULER = start_daily_prospector(run_daily_prospecting)
     STATE["daily_schedule_enabled"] = bool(SCHEDULER)
