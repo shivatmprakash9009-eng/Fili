@@ -30,7 +30,7 @@ class ProspectingFeatureTests(unittest.TestCase):
         self.assertEqual(email_domain("person@example.com"), "example.com")
         self.assertEqual(email_domain("contact@"), "")
 
-    @patch("dns.resolver.resolve", side_effect=dns.resolver.NXDOMAIN())
+    @patch("dns.resolver.resolve", side_effect=RuntimeError("no MX record"))
     def test_mx_never_claims_mailbox_verified(self, _resolve):
         result = verify_email_domain("nobody@example.invalid")
         self.assertFalse(result["mailbox_verified"])
