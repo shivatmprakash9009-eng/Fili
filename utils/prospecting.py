@@ -162,7 +162,7 @@ def tech_stack_signals(url: str, html: str = "", headers: dict[str, str] | None 
         "WooCommerce": ("woocommerce",),
         "Webflow": ("webflow.js", "webflow.com"),
         "Wix": ("wixstatic.com", "wix.com"),
-        "Next.js": ("_next/static", "__next_data__"),
+        "Next.js": ("_next/static", "__next_data__", "__next"),
         "React": ("react-dom", "data-reactroot", "__react"),
         "HubSpot": ("js.hs-scripts.com", "hubspot"),
         "Google Tag Manager": ("googletagmanager.com",),
