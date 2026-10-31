@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import {
-  Activity, ArrowRight, ArrowUpRight, Bell, Building2, CalendarDays, Check,
-  ChevronDown, ChevronRight, CircleAlert, Clock3, Command, Download, ExternalLink,
+  Activity, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
+  ChevronDown, ChevronRight, CircleAlert, Command, Download, ExternalLink,
   Filter, Globe, LayoutDashboard, LoaderCircle, Mail, Menu, MoreHorizontal,
   Plus, Rocket, Search, Settings2, ShieldCheck, Sparkles, Users, Workflow, X, Zap
 } from "lucide-react";
@@ -13,7 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { exportUrl, getApiStatus, isOutreachEligible, runCampaign, scanWebsite } from "@/lib/api";
 import type {
-  ApiState, ApiStatus, CampaignPayload, CampaignResponse, FollowUpDraft, Lead, NavItem
+  ApiState, ApiStatus, CampaignPayload, Lead, NavItem
 } from "@/lib/types";
 
 const NAV_ITEMS: { id: NavItem; label: string; icon: typeof LayoutDashboard }[] = [
@@ -460,7 +460,6 @@ function Dashboard() {
   const [query,setQuery]=useState("");
   const [lastCampaign,setLastCampaign]=useState("");
   const [lastRun,setLastRun]=useState<string|null>(null);
-  const [lastResponse,setLastResponse]=useState<CampaignResponse|null>(null);
   const [scanning,setScanning]=useState(false);
   const [notice,setNotice]=useState("");
   const searchRef=useRef<HTMLInputElement>(null);
@@ -517,7 +516,6 @@ function Dashboard() {
     try{
       const response=await runCampaign(payload);
       if(!response.success)throw new Error(response.error||"Campaign could not be completed.");
-      setLastResponse(response);
       setLeads(response.leads||[]);
       setLastCampaign(payload.campaign_name);
       setLastRun(new Date().toISOString());
