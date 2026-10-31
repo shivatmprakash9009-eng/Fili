@@ -74,8 +74,9 @@ async def fetch_apollo_leads(
                 name = org.get("name", "Unknown Corp")
                 domain = org.get("primary_domain") or f"{name.lower().replace(' ', '')}.com"
                 city = org.get("city", "")
-                country = org.get("country", location)
-                loc_str = f"{city}, {country}".strip(", ") or location
+                state = org.get("state", "") or org.get("state_name", "")
+                country = org.get("country", "")
+                loc_str = ", ".join(part for part in (city, state, country) if part)
                 phone = org.get("sanitized_phone") or "+1-555-0182"
                 employees = org.get("estimated_num_employees") or 50
 
@@ -84,6 +85,7 @@ async def fetch_apollo_leads(
                     "website": f"https://{domain}" if not domain.startswith("http") else domain,
                     "industry": industry,
                     "location": loc_str,
+                    "location_verified": bool(city and state),
                     "contact_name": "Executive Leadership",
                     "contact_title": "Founder / CEO",
                     "contact_email": f"partnerships@{domain}",
@@ -152,7 +154,8 @@ async def fetch_serpapi_leads(
                         "company_name": title,
                         "website": website or f"https://www.google.com/maps/search/{quote_plus(title)}",
                         "industry": query,
-                        "location": item.get("address", location),
+                        "location": item.get("address", ""),
+                        "location_verified": bool(item.get("address")),
                         "contact_name": "Business Owner",
                         "contact_title": "Owner / Managing Director",
                         "contact_email": email,
@@ -267,7 +270,8 @@ async def fetch_indiamart_leads(
                     "company_name": name,
                     "website": link if link.startswith("http") else f"https://www.indiamart.com{link}",
                     "industry": query,
-                    "location": location,
+                    "location": "",
+                    "location_verified": False,
                     "contact_name": "Sales & Export Director",
                     "contact_title": "Director / Managing Partner",
                     "contact_email": f"sales@{domain}",
@@ -353,7 +357,8 @@ async def fetch_duckduckgo_leads(
                     "company_name": company_name,
                     "website": actual_url,
                     "industry": query,
-                    "location": location,
+                    "location": "",
+                    "location_verified": False,
                     "contact_name": "Executive Team",
                     "contact_title": "Founder / Managing Director",
                     "contact_email": f"contact@{domain}",

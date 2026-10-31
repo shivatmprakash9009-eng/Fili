@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import LocationSelector from "@/components/LocationSelector";
 import {
   Activity, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
   ChevronDown, ChevronRight, CircleAlert, Command, Download, ExternalLink,
@@ -24,11 +25,11 @@ const NAV_ITEMS: { id: NavItem; label: string; icon: typeof LayoutDashboard }[] 
 ];
 
 const PLATFORM_OPTIONS = [
-  { value: "web_search", label: "Web discovery" },
+  { value: "web_search", label: "Web discovery", disabled: true },
   { value: "apollo", label: "Apollo.io" },
   { value: "google_maps", label: "Google Maps" },
-  { value: "indiamart", label: "IndiaMART" },
-  { value: "linkedin", label: "LinkedIn" }
+  { value: "indiamart", label: "IndiaMART", disabled: true },
+  { value: "linkedin", label: "LinkedIn", disabled: true }
 ] as const;
 
 const PAGE_TITLES: Record<NavItem, string> = {
@@ -278,10 +279,10 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
   onSubmit: (payload: CampaignPayload) => void;
 }) {
   const [target,setTarget]=useState("SaaS & Cloud Software");
-  const [location,setLocation]=useState("India (Pan India)");
+  const [locationScope,setLocationScope]=useState<CampaignPayload["location_scope"]|null>(null);
   const [count,setCount]=useState("10");
   const [name,setName]=useState("New campaign");
-  const [platform,setPlatform]=useState<CampaignPayload["platform"]>("web_search");
+  const [platform,setPlatform]=useState<CampaignPayload["platform"]>("google_maps");
 
   useEffect(()=>{
     if(!open)return;
@@ -302,7 +303,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
               <div><span className="section-kicker">NEW WORKFLOW</span><h2 id="campaign-dialog-title">Launch a campaign</h2></div>
               <button type="button" className="icon-button modal-close" onClick={onClose} disabled={busy} aria-label="Close"><X size={18}/></button>
             </div>
-            <form onSubmit={(event)=>{event.preventDefault();onSubmit({target,location,max_leads:Number(count),campaign_name:name,platform});}} className="campaign-form">
+            <form onSubmit={(event)=>{event.preventDefault();onSubmit({target,location:locationScope ? `${locationScope.city}, ${locationScope.state}, ${locationScope.country}` : "",location_scope:locationScope!,max_leads:Number(count),campaign_name:name,platform});}} className="campaign-form">
               <label className="field-group">
                 <span>Campaign name</span>
                 <input value={name} onChange={(e)=>setName(e.target.value)} maxLength={100} required/>
@@ -315,15 +316,10 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
                 <label className="field-group">
                   <span>Discovery source</span>
                   <select value={platform} onChange={(e)=>setPlatform(e.target.value as CampaignPayload["platform"])}>
-                    {PLATFORM_OPTIONS.map((option)=><option value={option.value} key={option.value}>{option.label}</option>)}
+                    {PLATFORM_OPTIONS.map((option)=><option value={option.value} key={option.value} disabled={"disabled" in option && option.disabled}>{option.label}</option>)}
                   </select>
                 </label>
-                <label className="field-group">
-                  <span>Location</span>
-                  <select value={location} onChange={(e)=>setLocation(e.target.value)}>
-                    {["India (Pan India)","United States (USA)","United Kingdom (UK)","Bengaluru, India","Mumbai, India","Delhi NCR, India","Global / Remote","Singapore"].map((value)=><option key={value}>{value}</option>)}
-                  </select>
-                </label>
+                <div className="field-group location-field"><LocationSelector value={locationScope} onChange={setLocationScope}/><span className="location-provider-note">City-verified discovery is currently enabled for Google Maps and Apollo. Other connectors stay disabled until they can verify each business address.</span></div>
               </div>
               <label className="field-group">
                 <span>Maximum prospects</span>
@@ -338,7 +334,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
               <div className="modal-footnote"><ShieldCheck size={15}/> Outreach remains draft-only. Review prospect sources before contacting.</div>
               <div className="modal-actions">
                 <button type="button" className="button button-quiet" onClick={onClose} disabled={busy}>Cancel</button>
-                <button type="submit" className="button button-primary" disabled={busy||!target.trim()||!name.trim()}>
+                <button type="submit" className="button button-primary" disabled={busy||!target.trim()||!name.trim()||!locationScope}>
                   {busy?<><LoaderCircle size={16} className="spin"/> Building pipeline</>:<>Start discovery <ArrowRight size={16}/></>}
                 </button>
               </div>

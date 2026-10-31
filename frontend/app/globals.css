@@ -585,3 +585,17 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) {
 }
 
 
+
+
+/* Hierarchical country → state → city targeting */
+.location-selector{display:flex;flex-direction:column;gap:12px;width:100%}
+.location-selector-heading{display:flex;align-items:center;gap:7px;color:var(--muted,#8b93a1);font-size:10px;font-weight:700;letter-spacing:.12em}
+.location-selector-heading small{margin-left:auto;font-size:10px;font-weight:500;letter-spacing:0;color:var(--muted,#8b93a1)}
+.location-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.location-field{min-width:0}
+.location-loading,.location-confirmation{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted,#8b93a1)}
+.location-confirmation{color:#72a7ff;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:9px;padding:9px 10px}
+.location-selector select:disabled,.location-selector input:disabled{opacity:.48;cursor:not-allowed}
+@media(max-width:520px){.location-grid{grid-template-columns:1fr}.location-selector-heading{flex-wrap:wrap}.location-selector-heading small{margin-left:0;width:100%}}
+
+.location-provider-note{display:block;margin-top:7px;color:var(--muted,#8b93a1);font-size:10px;line-height:1.5}
