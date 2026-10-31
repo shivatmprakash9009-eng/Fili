@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, LoaderCircle, MapPin } from "lucide-react";
+import { LoaderCircle, MapPin } from "lucide-react";
 
 type PlaceOption = { name: string; code?: string; emoji?: string };
 
@@ -61,8 +61,6 @@ export default function LocationSelector({ value, onChange }: {
     return () => { active = false; };
   }, [countryCode, stateCode]);
 
-  const selectedCountry = countries.find(item => item.code === countryCode);
-  const selectedState = states.find(item => item.code === stateCode);
   const filteredCities = useMemo(() => {
     const term = citySearch.trim().toLowerCase();
     return term ? cities.filter(item => item.name.toLowerCase().includes(term)) : cities;
