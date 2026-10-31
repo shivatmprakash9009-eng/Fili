@@ -168,3 +168,9 @@ The dashboard binds to 127.0.0.1 by default. Do not expose its unauthenticated d
 ## 📜 License
 
 MIT License — free to use, modify, and distribute.
+
+## Next.js Dashboard
+
+A new Next.js App Router frontend is being developed in [frontend/](frontend/README.md). It uses React + TypeScript, Motion animations, an electric-blue / monochrome interface, responsive navigation and a prospect detail drawer. The frontend proxies only allowlisted calls to the existing Python API.
+
+For local setup and Vercel configuration, see the [frontend guide](frontend/README.md). The Next.js frontend adds a single-workspace password gate, but the current Python engine still holds campaign data in memory. Multi-user identity, tenant isolation, persistent CRM storage, billing, audit logs and multi-instance scheduling are not yet implemented. This is a dashboard foundation, not yet a production multi-tenant SaaS.
