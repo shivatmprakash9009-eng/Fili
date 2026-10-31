@@ -27,13 +27,14 @@ def _matches_selected_city(lead: dict[str, Any], scope: dict[str, Any] | None) -
     location = str(lead.get("location") or "").casefold()
     city = str(scope.get("city") or "").strip().casefold()
     state = str(scope.get("state") or "").strip().casefold()
-    if not city or not state:
+    state_code = str(scope.get("state_code") or "").strip().casefold()
+    if not city or not (state or state_code):
         return False
     # Token-aware checks prevent e.g. York matching New York accidentally.
     import re
     def has_place(value: str) -> bool:
         return bool(re.search(r"(?<![\w])" + re.escape(value) + r"(?![\w])", location))
-    return has_place(city) and has_place(state)
+    return has_place(city) and (has_place(state) or (state_code and has_place(state_code)))
 
 
 class LeadResearcherAgent(BaseAgent):
