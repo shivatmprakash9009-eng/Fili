@@ -40,6 +40,13 @@ async function handle(request: NextRequest, context: RouteContext) {
   }
 
   const base = backendUrl();
+  const apiToken = process.env.FILI_API_TOKEN?.trim();
+  if (process.env.NODE_ENV === "production" && !apiToken) {
+    return NextResponse.json(
+      { error: "FILI_API_TOKEN is required for production API access." },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
+  }
   if (!base) {
     return NextResponse.json(
       { error: "Fili API is not connected. Configure FILI_API_BASE_URL on the server." },
@@ -78,6 +85,7 @@ async function handle(request: NextRequest, context: RouteContext) {
       signal: AbortSignal.timeout(timeout),
       headers: {
         Accept: request.headers.get("accept") || "application/json",
+        ...(apiToken ? { Authorization: "Bearer " + apiToken } : {}),
         ...(body ? { "Content-Type": "application/json" } : {})
       },
       ...(body ? { body } : {})
