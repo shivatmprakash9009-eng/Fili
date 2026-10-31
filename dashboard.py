@@ -16,7 +16,9 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
+import threading
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -35,6 +37,10 @@ from agents.content_writer import ContentWriterAgent
 from agents.email_outreach import EmailOutreachAgent
 from agents.response_analyzer import ResponseAnalyzerAgent
 from agents.reporting import ReportingAgent
+from utils.prospecting import (
+    csv_export, enrich_lead, excel_export, fetch_tech_stack, validate_public_http_url,
+)
+from utils.scheduler import start_daily_prospector
 
 # Global state for dashboard
 STATE: dict[str, Any] = {
@@ -43,7 +49,12 @@ STATE: dict[str, Any] = {
     "latest_content": [],
     "campaign_running": False,
     "last_campaign_name": "None",
+    "last_daily_run": None,
+    "daily_schedule_enabled": False,
+    "daily_schedule_error": None,
 }
+CAMPAIGN_LOCK = threading.Lock()
+SCHEDULER = None
 
 
 def run_async(coro):
@@ -116,8 +127,9 @@ async def execute_campaign(
 
         leads = leads_res.data.get("leads", []) if leads_res else []
         content_items = content_res.data.get("content_items", []) if content_res else []
+        email_res = orchestrator.get_result(results[2].task_id) if len(results) > 2 else None
 
-        # Merge drafted email subject and body directly into each lead object for 1-tap Gmail drafting!
+        # Merge generated outreach content. Email agent remains in dry-run mode.
         for i, lead in enumerate(leads):
             if i < len(content_items):
                 item = content_items[i]
@@ -130,15 +142,18 @@ async def execute_campaign(
                 lead["email_body"] = f"Hi {lead.get('contact_name', 'there')},\n\nI wanted to connect with {lead.get('company_name', '')}."
                 lead["email_quality"] = 8.5
 
+        leads = await asyncio.gather(
+            *(asyncio.to_thread(enrich_lead, lead, True) for lead in leads)
+        )
         STATE["latest_leads"] = leads
         STATE["latest_content"] = content_items
         STATE["latest_report"] = report_res.data if report_res else {}
         STATE["last_campaign_name"] = campaign_name
+        email_activity = email_res.data if email_res else {"sent": 0, "dry_run": True}
         return {
-            "success": True,
-            "leads": leads,
-            "content": content_items,
-            "report": STATE["latest_report"],
+            "success": True, "leads": leads, "content": content_items,
+            "report": STATE["latest_report"], "email_activity": email_activity,
+            "email_dry_run": True,
         }
     finally:
         await orchestrator.shutdown_all()
@@ -681,10 +696,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         """Handle CORS preflight requests."""
         self.send_response(HTTPStatus.NO_CONTENT)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Max-Age", "86400")
         self.end_headers()
 
     def do_GET(self) -> None:
@@ -693,57 +704,109 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             payload = HTML_PAGE.encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
         elif parsed.path == "/api/status":
+            jobs = SCHEDULER.get_jobs() if SCHEDULER else []
+            next_run = jobs[0].next_run_time.isoformat() if jobs and jobs[0].next_run_time else None
             self.send_json({
-                "online": True,
-                "agents_count": 5,
+                "online": True, "agents_count": 5,
                 "latest_campaign": STATE["last_campaign_name"],
+                "daily_schedule_enabled": bool(SCHEDULER),
+                "daily_schedule_time": os.getenv("FILI_DAILY_PROSPECTOR_TIME", "09:00"),
+                "daily_schedule_timezone": os.getenv("FILI_DAILY_PROSPECTOR_TIMEZONE", "Asia/Kolkata"),
+                "next_run": next_run, "last_daily_run": STATE["last_daily_run"],
             })
+        elif parsed.path in {"/api/export.csv", "/api/export.xlsx"}:
+            leads = STATE["latest_leads"]
+            if not leads:
+                self.send_json({"error": "No campaign leads are available to export."}, HTTPStatus.CONFLICT)
+                return
+            if parsed.path.endswith(".csv"):
+                payload = csv_export(leads).encode("utf-8-sig")
+                content_type, filename = "text/csv; charset=utf-8", "fili-crm-export.csv"
+            else:
+                payload = excel_export(leads)
+                content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                filename = "fili-crm-export.xlsx"
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self.send_json({"error": "Invalid Content-Length."}, HTTPStatus.BAD_REQUEST)
+            return
+        if content_length < 0 or content_length > 1_000_000:
+            self.send_json({"error": "Request body exceeds the 1 MB limit."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return
         body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
         try:
             data = json.loads(body)
-        except json.JSONDecodeError:
-            data = {}
+            if not isinstance(data, dict):
+                raise ValueError("JSON request body must be an object.")
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+            self.send_json({"error": str(exc) or "Invalid JSON request."}, HTTPStatus.BAD_REQUEST)
+            return
 
         try:
             if parsed.path == "/api/run-campaign":
-                target = data.get("target", "SaaS")
-                location = data.get("location", "United States (USA)")
-                max_leads = int(data.get("max_leads", 5))
-                campaign_name = data.get("campaign_name", "Autonomous Campaign")
-                platform = data.get("platform", "apollo")
-                result = run_async(execute_campaign(target, location, max_leads, campaign_name, platform))
-                self.send_json(result)
+                target = str(data.get("target", "SaaS")).strip()[:160]
+                location = str(data.get("location", "India")).strip()[:160]
+                max_leads = max(1, min(int(data.get("max_leads", 5)), 25))
+                campaign_name = str(data.get("campaign_name", "Fili Campaign")).strip()[:100]
+                platform = str(data.get("platform", "apollo")).lower()
+                if platform not in {"apollo", "google_maps", "indiamart", "linkedin", "web_search"}:
+                    self.send_json({"error": "Unsupported prospecting platform."}, HTTPStatus.BAD_REQUEST)
+                    return
+                if not target or not location or not campaign_name:
+                    self.send_json({"error": "Target, location and campaign name are required."}, HTTPStatus.BAD_REQUEST)
+                    return
+                if not CAMPAIGN_LOCK.acquire(blocking=False):
+                    self.send_json({"error": "A campaign is already running. Retry after it finishes."}, HTTPStatus.CONFLICT)
+                    return
+                STATE["campaign_running"] = True
+                try:
+                    result = run_async(execute_campaign(target, location, max_leads, campaign_name, platform))
+                    self.send_json(result)
+                finally:
+                    STATE["campaign_running"] = False
+                    CAMPAIGN_LOCK.release()
 
             elif parsed.path == "/api/analyze-reply":
-                reply_text = data.get("reply_text", "")
+                reply_text = str(data.get("reply_text", "")).strip()
+                if not reply_text or len(reply_text) > 10_000:
+                    self.send_json({"error": "Reply text must contain 1–10,000 characters."}, HTTPStatus.BAD_REQUEST)
+                    return
                 result = run_async(analyze_single_reply(reply_text))
+                self.send_json(result)
+
+            elif parsed.path == "/api/scan-tech":
+                safe_url = validate_public_http_url(data.get("url", ""))
+                result = fetch_tech_stack(safe_url)
                 self.send_json(result)
 
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
-        except Exception as exc:
-            import traceback
-            traceback.print_exc()
-            self.send_json({"error": str(exc), "success": False})
+        except ValueError as exc:
+            self.send_json({"error": str(exc), "success": False}, HTTPStatus.BAD_REQUEST)
+        except Exception:
+            logging.exception("Dashboard API request failed")
+            self.send_json({"error": "The request could not be completed.", "success": False}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def send_json(self, data: Any, status: int = HTTPStatus.OK) -> None:
         payload = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         try:
@@ -756,11 +819,45 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         pass
 
 
+
+
+def run_daily_prospecting() -> None:
+    """Run a scheduled discovery pass. Email stays in the pipeline's dry-run mode."""
+    if not CAMPAIGN_LOCK.acquire(blocking=False):
+        logging.warning("Daily prospector skipped because another campaign is running.")
+        return
+    STATE["campaign_running"] = True
+    try:
+        target = os.getenv("FILI_DAILY_PROSPECTOR_TARGET", "SaaS companies")
+        location = os.getenv("FILI_DAILY_PROSPECTOR_LOCATION", "India")
+        try:
+            count = max(1, min(int(os.getenv("FILI_DAILY_PROSPECTOR_MAX_LEADS", "10")), 25))
+        except ValueError:
+            count = 10
+        result = run_async(execute_campaign(target, location, count, "Daily Prospector", "web_search"))
+        STATE["last_daily_run"] = {
+            "success": bool(result.get("success")),
+            "lead_count": len(result.get("leads", [])),
+        }
+    except Exception:
+        logging.exception("Daily prospecting run failed")
+        STATE["last_daily_run"] = {"success": False, "lead_count": 0}
+    finally:
+        STATE["campaign_running"] = False
+        CAMPAIGN_LOCK.release()
+
+
 def main():
+    global SCHEDULER
     parser = argparse.ArgumentParser(description="Multi-Agent System Web Dashboard")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind dashboard server (default: 8000)")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host interface (default: 0.0.0.0)")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host interface (default: 127.0.0.1)")
     args = parser.parse_args()
+
+    SCHEDULER = start_daily_prospector(run_daily_prospecting)
+    STATE["daily_schedule_enabled"] = bool(SCHEDULER)
+    if not SCHEDULER and os.getenv("FILI_DAILY_PROSPECTOR_ENABLED", "false").lower() in {"1", "true", "yes"}:
+        STATE["daily_schedule_error"] = "Scheduler failed to initialize; check logs and APScheduler installation."
 
     server = ThreadingHTTPServer((args.host, args.port), DashboardHandler)
     server.daemon_threads = True
@@ -776,6 +873,9 @@ def main():
     except KeyboardInterrupt:
         print("\nStopping dashboard server...")
         server.shutdown()
+    finally:
+        if SCHEDULER:
+            SCHEDULER.shutdown(wait=False)
 
 
 if __name__ == "__main__":
