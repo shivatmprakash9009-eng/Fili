@@ -2,7 +2,8 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, KeyRound, LoaderCircle, ShieldCheck, X } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import Dashboard from "./dashboard";
 
 type GateState = "checking" | "open" | "locked" | "unconfigured";
@@ -79,7 +80,7 @@ export default function AuthGate() {
             <p>Enter the workspace password to continue.</p>
             <form className="auth-form" onSubmit={handleLogin}>
               <label htmlFor="workspace-password">Workspace password</label>
-              <input id="workspace-password" type="password" autoComplete="current-password" value={password} onChange={(event)=>setPassword(event.target.value)} required autoFocus/>
+              <input id="workspace-password" type="password" autoComplete="current-password" value={password} onChange={(event)=>setPassword(event.target.value)} required/>
               {error&&<span className="auth-error"><X size={14}/>{error}</span>}
               <button type="submit" className="button button-primary" disabled={busy||!password}>
                 {busy?<><LoaderCircle className="spin" size={16}/> Unlocking</>:<>Unlock workspace <ArrowRight size={15}/></>}
