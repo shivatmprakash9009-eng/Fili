@@ -30,7 +30,7 @@ Create or configure the Vercel project with Root Directory = frontend, Framework
 Configure these server-side environment variables:
 
 - FILI_API_BASE_URL: HTTPS URL of the deployed Python API.
-- FILI_API_TOKEN: a high-entropy shared secret. Set the same value in the Python API environment.
+- FILI_API_TOKEN: a high-entropy service-to-service secret. Set the same value in the Python API environment.
 
 Run the Python service with a reachable HTTPS endpoint and:
 
@@ -43,6 +43,6 @@ The Python API rejects protected API requests without the bearer token when the 
 
 The UI is wired to the existing Python API for campaign discovery, status, website scanning and CSV/XLSX exports. It does not fabricate prospect metrics; before the first campaign it shows an empty state.
 
-The password gate is single-workspace access protection, not a multi-user identity provider. It has no account recovery or organisation membership. Add edge/WAF rate limiting to the login route before wide public access.
+Authentication is intentionally not included in this development build. Add a complete identity and organisation model before inviting external users or storing customer data.
 
 This is a SaaS dashboard foundation, not a complete multi-tenant SaaS release. The current Python engine keeps the latest campaign in process memory and its daily scheduler is in-process. User accounts, organisation membership, row-level tenant isolation, persistent campaign/lead storage, billing, audit events and a durable multi-instance job queue still need to be implemented before accepting external customers or storing their data. Do not expose the current Python service publicly without private ingress controls.
