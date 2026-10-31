@@ -32,7 +32,7 @@ def _matches_selected_city(lead: dict[str, Any], scope: dict[str, Any] | None) -
     # Token-aware checks prevent e.g. York matching New York accidentally.
     import re
     def has_place(value: str) -> bool:
-        return bool(re.search(r"(?<![\\w])" + re.escape(value) + r"(?![\\w])", location))
+        return bool(re.search(r"(?<![\w])" + re.escape(value) + r"(?![\w])", location))
     return has_place(city) and has_place(state)
 
 
