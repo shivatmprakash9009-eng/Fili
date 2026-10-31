@@ -87,6 +87,7 @@ Focus on high-growth B2B companies with verified corporate email domains and dir
 Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce'], 'funding_stage': 'Series A/Bootstrapped'."""
 
         leads: list[dict[str, Any]] = []
+        source_type = "live_connector_results"
 
         # ── 1. Attempt Live Data Connectors First ─────────────────
         if platform == "apollo" and get_apollo_key():
@@ -128,8 +129,11 @@ Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce
 
         # ── 2. Fallback to LLM or Mock Generation if no live leads ──
         if not leads:
-            prompt = f"""You are a B2B Lead Intelligence Agent utilizing the database: {platform_label}.
-Generate {max_leads} realistic, high-value qualified leads in the {target_industry} domain located in/targeting {target_location}.
+            source_type = "ai_generated_unverified"
+            prompt = f"""You are a lead research assistant. Do not claim to access {platform_label} unless a live connector returned results.
+Generate only illustrative examples if live search is unavailable. Never invent or imply verified people, emails, phone numbers, customer relationships, funding, or company facts.
+If a field cannot be grounded in the supplied context, return an empty string or empty list. Mark all generated records as illustrative examples, not real prospects.
+Prepare up to {max_leads} illustrative records for the {target_industry} domain in {target_location}.
 {platform_guidance}
 
 For each lead, return a JSON array of objects:
@@ -161,13 +165,18 @@ Return ONLY the JSON array, no extra markdown commentary."""
                 )
                 leads = self._parse_leads(response)
             except RuntimeError:
-                # LLM not available — use mock data
-                self.logger.info("LLM not available, generating mock leads")
+                # LLM unavailable — deterministic fixtures are explicitly marked as synthetic.
+                self.logger.info("LLM not available, generating synthetic preview records")
                 leads = self._generate_mock_leads(target_industry, target_location, max_leads)
+                source_type = "mock_data"
 
-        # Score and annotate platform on each lead
+        # Source provenance is explicit. AI/mock records are never outreach eligible.
         for lead in leads:
             lead["platform"] = lead.get("platform") or platform_label
+            lead["source_type"] = lead.get("source_type") or source_type
+            lead["is_synthetic"] = lead["source_type"] in {"ai_generated_unverified", "mock_data"}
+            lead["contact_verified"] = bool(lead.get("contact_verified", False)) and not lead["is_synthetic"]
+            lead["outreach_enabled"] = not lead["is_synthetic"]
             lead["relevance_score"] = self._calculate_score(lead, target_industry)
 
         # Sort by score descending
@@ -248,7 +257,7 @@ Return as JSON with keys: recent_news, competitors, business_needs, outreach_app
                 return json.loads(text[start:end])
         except (json.JSONDecodeError, ValueError):
             self.logger.warning("Failed to parse LLM leads response")
-        return self._generate_mock_leads("Technology", "USA", 5)
+        return []
 
     def _parse_json_safe(self, text: str) -> dict[str, Any]:
         """Safely parse JSON from text."""
