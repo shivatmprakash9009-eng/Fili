@@ -1,0 +1,20 @@
+Subject: Re: {original_subject}
+
+Hi {first_name},
+
+I wanted to follow up on my previous email about {value_proposition}.
+
+Since I last reached out, we've {recent_achievement}, which I thought might be relevant to {company_name}.
+
+I understand you're busy, so I'll keep this brief — would any of these times work for a quick chat?
+
+- {time_slot_1}
+- {time_slot_2}
+- {time_slot_3}
+
+If now isn't the right time, just let me know and I'll circle back later.
+
+Best,
+{sender_name}
+{sender_title}
+{sender_company}

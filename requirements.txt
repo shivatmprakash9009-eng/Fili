@@ -1,0 +1,5 @@
+# Multi-Agent System Dependencies
+# ================================
+# Core (no external deps required for basic operation)
+# Optional for LLM API calls:
+httpx>=0.27.0

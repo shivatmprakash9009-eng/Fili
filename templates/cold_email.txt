@@ -1,0 +1,22 @@
+Subject: {subject_line}
+
+Hi {first_name},
+
+I noticed that {company_name} has been {observation} — impressive work!
+
+I'm reaching out because we help {industry} companies like yours {value_proposition}.
+
+Specifically, we've helped similar companies:
+- {benefit_1}
+- {benefit_2}
+- {benefit_3}
+
+Would you be open to a quick 15-minute call this week to explore if we could help {company_name} achieve similar results?
+
+Looking forward to hearing from you.
+
+Best regards,
+{sender_name}
+{sender_title}
+{sender_company}
+{sender_email}

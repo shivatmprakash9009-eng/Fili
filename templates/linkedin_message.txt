@@ -1,0 +1,12 @@
+Hi {first_name},
+
+I came across your profile and was impressed by your work at {company_name}, especially {observation}.
+
+I work with {industry} leaders to {value_proposition}, and I thought there might be a great opportunity for us to connect.
+
+Would you be open to a brief conversation about how we might be able to help {company_name} {desired_outcome}?
+
+Looking forward to connecting!
+
+Best,
+{sender_name}
