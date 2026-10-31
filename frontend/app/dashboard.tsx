@@ -25,11 +25,11 @@ const NAV_ITEMS: { id: NavItem; label: string; icon: typeof LayoutDashboard }[] 
 ];
 
 const PLATFORM_OPTIONS = [
-  { value: "web_search", label: "Web discovery" },
+  { value: "web_search", label: "Web discovery", disabled: true },
   { value: "apollo", label: "Apollo.io" },
   { value: "google_maps", label: "Google Maps" },
-  { value: "indiamart", label: "IndiaMART" },
-  { value: "linkedin", label: "LinkedIn" }
+  { value: "indiamart", label: "IndiaMART", disabled: true },
+  { value: "linkedin", label: "LinkedIn", disabled: true }
 ] as const;
 
 const PAGE_TITLES: Record<NavItem, string> = {
@@ -316,10 +316,10 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
                 <label className="field-group">
                   <span>Discovery source</span>
                   <select value={platform} onChange={(e)=>setPlatform(e.target.value as CampaignPayload["platform"])}>
-                    {PLATFORM_OPTIONS.map((option)=><option value={option.value} key={option.value}>{option.label}</option>)}
+                    {PLATFORM_OPTIONS.map((option)=><option value={option.value} key={option.value} disabled={"disabled" in option && option.disabled}>{option.label}</option>)}
                   </select>
                 </label>
-                <div className="field-group location-field"><LocationSelector value={locationScope} onChange={setLocationScope}/></div>
+                <div className="field-group location-field"><LocationSelector value={locationScope} onChange={setLocationScope}/><span className="location-provider-note">City-verified discovery is currently enabled for Google Maps and Apollo. Other connectors stay disabled until they can verify each business address.</span></div>
               </div>
               <label className="field-group">
                 <span>Maximum prospects</span>
