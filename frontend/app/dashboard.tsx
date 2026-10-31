@@ -4,7 +4,7 @@ import Image from "next/image";
 import {
   Activity, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
   ChevronDown, ChevronRight, CircleAlert, Command, Download, ExternalLink,
-  Filter, Globe, LayoutDashboard, LoaderCircle, Mail, Menu, MoreHorizontal,
+  Globe, LayoutDashboard, LoaderCircle, Mail, Menu, MoreHorizontal,
   Plus, Rocket, Search, Settings2, ShieldCheck, Sparkles, Users, Workflow, X, Zap
 } from "lucide-react";
 import {
@@ -119,7 +119,7 @@ function EmptyLeads({ onLaunch }: { onLaunch: () => void }) {
         <span className="empty-spark spark-a"><Sparkles size={13} /></span>
         <span className="empty-spark spark-b"><Zap size={12} /></span>
       </div>
-      <h3>No prospects in this workspace</h3>
+      <h3>No prospects in this session</h3>
       <p>Launch a search to bring your first prospects into Fili.</p>
       <button type="button" className="button button-primary button-small" onClick={onLaunch}>
         <Plus size={15} /> Start prospecting
@@ -207,7 +207,6 @@ function ProspectTable({ leads, onSelect, query, onQueryChange, compact = false 
             <Search size={14}/>
             <input aria-label="Search prospects" value={query} onChange={(e)=>onQueryChange(e.target.value)} placeholder="Search prospects"/>
           </label>
-          <span className="table-filter"><Filter size={14}/><span>All</span><ChevronDown size={13}/></span>
         </div>
       </div>
 
@@ -610,8 +609,8 @@ function Dashboard() {
         <div className="sidebar-divider"/>
         <div className="nav-group nav-secondary">
           <span className="nav-label">TOOLS</span>
-          <button type="button" className="nav-link" onClick={()=>showNotice("Exports are available after a campaign runs.")}><Download size={17}/><span>CRM exports</span></button>
-          <button type="button" className="nav-link" onClick={()=>showNotice("Daily prospecting is configured on the API server.")}><CalendarDays size={17}/><span>Daily prospector</span></button>
+          <button type="button" className="nav-link" onClick={()=>setActiveNav("prospects")}><Download size={17}/><span>CRM exports</span></button>
+          <button type="button" className="nav-link" onClick={()=>setActiveNav("settings")}><CalendarDays size={17}/><span>Daily prospector</span></button>
         </div>
 
         <div className="sidebar-bottom">
@@ -777,9 +776,9 @@ function Dashboard() {
       </div>
 
       <CampaignDialog open={campaignOpen} busy={campaignBusy} error={campaignError} onClose={()=>setCampaignOpen(false)} onSubmit={handleLaunch}/>
-      <ProspectDrawer lead={selectedLead} scanning={scanning} onClose={()=>setSelectedLead(null)} onScan={handleScan}/>
+      <ProspectDrawer key={selectedLead ? selectedLead.company_name + (selectedLead.contact_email || "") : "closed"} lead={selectedLead} scanning={scanning} onClose={()=>setSelectedLead(null)} onScan={handleScan}/>
       <AnimatePresence>
-        {notice&&<motion.div className="toast" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}}>
+        {notice&&<motion.div className="toast" role="status" aria-live="polite" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}}>
           <span className="toast-check"><Check size={13}/></span>{notice}
         </motion.div>}
       </AnimatePresence>
