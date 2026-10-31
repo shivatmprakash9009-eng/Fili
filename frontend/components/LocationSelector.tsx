@@ -38,7 +38,7 @@ export default function LocationSelector({ value, onChange }: {
   }, []);
 
   useEffect(() => {
-    if (!countryCode) { setStates([]); return; }
+    if (!countryCode) return;
     let active = true;
     setLoading(true);
     fetch("/api/locations?level=states&country=" + encodeURIComponent(countryCode))
@@ -50,7 +50,7 @@ export default function LocationSelector({ value, onChange }: {
   }, [countryCode]);
 
   useEffect(() => {
-    if (!countryCode || !stateCode) { setCities([]); return; }
+    if (!countryCode || !stateCode) return;
     let active = true;
     setLoading(true);
     fetch("/api/locations?level=cities&country=" + encodeURIComponent(countryCode) + "&state=" + encodeURIComponent(stateCode))
@@ -80,7 +80,7 @@ export default function LocationSelector({ value, onChange }: {
         <label className="field-group">
           <span>Country</span>
           <select value={countryCode} onChange={event => {
-            const next = event.target.value; setCountryCode(next); setStateCode(""); setCity(""); setCitySearch(""); setError(""); onChange(null);
+            const next = event.target.value; setCountryCode(next); setStates([]); setStateCode(""); setCities([]); setCity(""); setCitySearch(""); setError(""); onChange(null);
           }} required>
             <option value="">Select country</option>
             {countries.map(item => <option key={item.code} value={item.code}>{item.emoji ? item.emoji + " " : ""}{item.name}</option>)}
@@ -89,7 +89,7 @@ export default function LocationSelector({ value, onChange }: {
         <label className="field-group">
           <span>State / Province</span>
           <select value={stateCode} disabled={!countryCode || loading} onChange={event => {
-            const next = event.target.value; setStateCode(next); setCity(""); setCitySearch(""); setError(""); onChange(null);
+            const next = event.target.value; setStateCode(next); setCities([]); setCity(""); setCitySearch(""); setError(""); onChange(null);
           }} required>
             <option value="">Select state</option>
             {states.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}
