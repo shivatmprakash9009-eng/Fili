@@ -229,7 +229,6 @@ function ProspectTable({ leads, onSelect, query, onQueryChange, compact = false 
             </thead>
             <tbody>
               {filtered.slice(0,compact?5:100).map((lead,index)=>{
-                const eligible=isOutreachEligible(lead);
                 const mx=lead.email_verification?.status || "not checked";
                 return (
                   <tr key={lead.company_name + "-" + index} onClick={()=>onSelect(lead)} tabIndex={0}
@@ -474,7 +473,8 @@ function Dashboard() {
   },[]);
 
   useEffect(()=>{
-    void refreshStatus();
+    const timer = window.setTimeout(() => { void refreshStatus(); }, 0);
+    return () => window.clearTimeout(timer);
   },[refreshStatus]);
 
   useEffect(()=>{
