@@ -74,6 +74,7 @@ async def execute_campaign(
     max_leads: int,
     campaign_name: str,
     platform: str = "apollo",
+    location_scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Execute lead generation pipeline with selected platform & geo."""
     settings = Settings.from_env()
@@ -110,6 +111,7 @@ async def execute_campaign(
                 "payload": {
                     "target_industry": target,
                     "target_location": location,
+                    "target_location_scope": location_scope,
                     "max_leads": max_leads,
                     "platform": platform,
                 },
@@ -923,6 +925,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 if platform not in {"apollo", "google_maps", "indiamart", "linkedin", "web_search"}:
                     self.send_json({"error": "Unsupported prospecting platform."}, HTTPStatus.BAD_REQUEST)
                     return
+                location_scope = data.get("location_scope")
+                if not isinstance(location_scope, dict) or not all(str(location_scope.get(key, "")).strip() for key in ("country", "country_code", "state", "state_code", "city")):
+                    self.send_json({"error": "Select a valid country, state and city before starting discovery."}, HTTPStatus.BAD_REQUEST)
+                    return
                 if not target or not location or not campaign_name:
                     self.send_json({"error": "Target, location and campaign name are required."}, HTTPStatus.BAD_REQUEST)
                     return
@@ -931,7 +937,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     return
                 STATE["campaign_running"] = True
                 try:
-                    result = run_async(execute_campaign(target, location, max_leads, campaign_name, platform))
+                    result = run_async(execute_campaign(target, location, max_leads, campaign_name, platform, location_scope))
                     self.send_json(result)
                 finally:
                     STATE["campaign_running"] = False
