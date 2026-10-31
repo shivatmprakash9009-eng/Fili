@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import {
-  Activity, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check, LockKeyhole,
+  Activity, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
   ChevronDown, ChevronRight, CircleAlert, Command, Download, ExternalLink,
   Globe, LayoutDashboard, LoaderCircle, Mail, Menu, MoreHorizontal,
   Plus, Rocket, Search, Settings2, ShieldCheck, Sparkles, Users, Workflow, X, Zap
@@ -748,7 +748,6 @@ function Dashboard() {
                 <div><span className="section-kicker">CONFIGURATION</span><h1>Workspace settings<span className="title-period">.</span></h1><p className="page-subtitle">Connection health and discovery schedule.</p></div>
                 <div className="intro-actions">
           <button type="button" className="button button-outline" onClick={refreshStatus}><Activity size={15}/> Recheck</button>
-          <button type="button" className="button button-outline" onClick={()=>window.dispatchEvent(new Event("fili:logout"))}><LockKeyhole size={14}/> Lock workspace</button>
         </div>
               </div>
               <section className="surface-card settings-card">
