@@ -4,7 +4,10 @@ export const SESSION_COOKIE = "fili_access";
 export const SESSION_MAX_AGE = 60 * 60 * 12;
 
 export function isSessionConfigured(): boolean {
-  return Boolean(process.env.FILI_DASHBOARD_PASSWORD?.trim() && process.env.FILI_SESSION_SECRET?.trim());
+  return Boolean(
+    (process.env.FILI_DASHBOARD_PASSWORD || "").length >= 12
+    && (process.env.FILI_SESSION_SECRET || "").length >= 32
+  );
 }
 
 export function isSessionValid(value?: string): boolean {
