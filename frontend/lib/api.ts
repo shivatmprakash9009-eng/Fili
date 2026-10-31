@@ -3,7 +3,7 @@ import type { ApiStatus, CampaignPayload, CampaignResponse, Lead } from "./types
 async function readJson<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) {
-    throw new Error(payload.error || \`Request failed (\${response.status})\`);
+    throw new Error(payload.error || `Request failed (${response.status})`);
   }
   return payload;
 }
@@ -36,7 +36,7 @@ export async function scanWebsite(url: string): Promise<{ status: string; signal
 }
 
 export function exportUrl(kind: "csv" | "xlsx"): string {
-  return \`/api/fili/export.\${kind}\`;
+  return `/api/fili/export.${kind}`;
 }
 
 export function isOutreachEligible(lead: Lead): boolean {
