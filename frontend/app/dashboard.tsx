@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import LocationSelector from "@/components/LocationSelector";
 import {
   Activity, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
   ChevronDown, ChevronRight, CircleAlert, Command, Download, ExternalLink,
@@ -278,7 +279,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
   onSubmit: (payload: CampaignPayload) => void;
 }) {
   const [target,setTarget]=useState("SaaS & Cloud Software");
-  const [location,setLocation]=useState("India (Pan India)");
+  const [locationScope,setLocationScope]=useState<CampaignPayload["location_scope"]|null>(null);
   const [count,setCount]=useState("10");
   const [name,setName]=useState("New campaign");
   const [platform,setPlatform]=useState<CampaignPayload["platform"]>("web_search");
@@ -302,7 +303,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
               <div><span className="section-kicker">NEW WORKFLOW</span><h2 id="campaign-dialog-title">Launch a campaign</h2></div>
               <button type="button" className="icon-button modal-close" onClick={onClose} disabled={busy} aria-label="Close"><X size={18}/></button>
             </div>
-            <form onSubmit={(event)=>{event.preventDefault();onSubmit({target,location,max_leads:Number(count),campaign_name:name,platform});}} className="campaign-form">
+            <form onSubmit={(event)=>{event.preventDefault();onSubmit({target,location:locationScope ? `${locationScope.city}, ${locationScope.state}, ${locationScope.country}` : "",location_scope:locationScope!,max_leads:Number(count),campaign_name:name,platform});}} className="campaign-form">
               <label className="field-group">
                 <span>Campaign name</span>
                 <input value={name} onChange={(e)=>setName(e.target.value)} maxLength={100} required/>
@@ -318,12 +319,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
                     {PLATFORM_OPTIONS.map((option)=><option value={option.value} key={option.value}>{option.label}</option>)}
                   </select>
                 </label>
-                <label className="field-group">
-                  <span>Location</span>
-                  <select value={location} onChange={(e)=>setLocation(e.target.value)}>
-                    {["India (Pan India)","United States (USA)","United Kingdom (UK)","Bengaluru, India","Mumbai, India","Delhi NCR, India","Global / Remote","Singapore"].map((value)=><option key={value}>{value}</option>)}
-                  </select>
-                </label>
+                <div className="field-group location-field"><LocationSelector value={locationScope} onChange={setLocationScope}/></div>
               </div>
               <label className="field-group">
                 <span>Maximum prospects</span>
@@ -338,7 +334,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
               <div className="modal-footnote"><ShieldCheck size={15}/> Outreach remains draft-only. Review prospect sources before contacting.</div>
               <div className="modal-actions">
                 <button type="button" className="button button-quiet" onClick={onClose} disabled={busy}>Cancel</button>
-                <button type="submit" className="button button-primary" disabled={busy||!target.trim()||!name.trim()}>
+                <button type="submit" className="button button-primary" disabled={busy||!target.trim()||!name.trim()||!locationScope}>
                   {busy?<><LoaderCircle size={16} className="spin"/> Building pipeline</>:<>Start discovery <ArrowRight size={16}/></>}
                 </button>
               </div>
