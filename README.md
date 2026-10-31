@@ -144,6 +144,27 @@ Research Leads → Generate Content → Send Emails → Generate Report
 
 Each step passes its results to the next automatically.
 
+## Prospecting Workflow Suite
+
+The dashboard supports six workflows:
+
+- WhatsApp click-to-chat opens a prefilled draft only when an explicit international + phone number is available. It does not send messages.
+- CRM downloads are available in CSV and XLSX. Lead text is neutralized against spreadsheet formula injection.
+- DNS MX checks confirm domain mail routing only; they do not verify an individual mailbox or guarantee delivery.
+- Follow-up messages for Day 1, Day 3 and Day 7 are editable drafts, never auto-sent.
+- Website fingerprints inspect public HTML/headers, reject local/private addresses, revalidate redirects and cap response bodies at 1 MB. They are not a complete infrastructure inventory.
+- The 09:00 daily prospector uses APScheduler in the dashboard process. It keeps latest run state in memory; multi-instance deployments need an external scheduler and persistent CRM store.
+
+### Enable the daily schedule
+
+Copy .env.example to .env and set FILI_DAILY_PROSPECTOR_ENABLED=true. Defaults are 09:00 Asia/Kolkata, target SaaS companies, location India and 10 leads. Restart the dashboard after changing settings. The daily pipeline remains in email dry-run mode.
+
+### Prospect and outreach safety
+
+When live connectors return no results, LLM-generated or sample records are marked AI / MOCK · UNVERIFIED and Gmail/WhatsApp outreach actions are disabled. Live search results should still be reviewed before outreach. MX results are shown separately from mailbox verification.
+
+The dashboard binds to 127.0.0.1 by default. Do not expose its unauthenticated dashboard/API directly to the public internet; add authentication and network controls before remote deployment.
+
 ## 📜 License
 
 MIT License — free to use, modify, and distribute.
