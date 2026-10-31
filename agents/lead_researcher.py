@@ -150,6 +150,14 @@ Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce
         if location_scope:
             leads = [lead for lead in leads if _matches_selected_city(lead, location_scope)]
 
+        # Never fabricate city-targeted leads when no provider-verified city match exists.
+        if location_scope and not leads:
+            self.logger.info("No provider-verified leads matched the selected city and state.")
+            return {
+                "leads": [], "total": 0, "location_filter_applied": True,
+                "message": "No provider-verified results matched this city. Try another source or city.",
+            }
+
         # ── 2. Fallback to LLM or Mock Generation if no live leads ──
         if not leads:
             source_type = "ai_generated_unverified"
