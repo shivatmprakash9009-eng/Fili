@@ -18,6 +18,24 @@ from utils.live_search import (
 )
 
 
+def _matches_selected_city(lead: dict[str, Any], scope: dict[str, Any] | None) -> bool:
+    """Require provider-supplied location evidence to match the selected city and state."""
+    if not scope:
+        return True
+    if not lead.get("location_verified"):
+        return False
+    location = str(lead.get("location") or "").casefold()
+    city = str(scope.get("city") or "").strip().casefold()
+    state = str(scope.get("state") or "").strip().casefold()
+    if not city or not state:
+        return False
+    # Token-aware checks prevent e.g. York matching New York accidentally.
+    import re
+    def has_place(value: str) -> bool:
+        return bool(re.search(r"(?<![\\w])" + re.escape(value) + r"(?![\\w])", location))
+    return has_place(city) and has_place(state)
+
+
 class LeadResearcherAgent(BaseAgent):
     """Researches target industries/niches and finds potential leads.
 
@@ -51,6 +69,7 @@ class LeadResearcherAgent(BaseAgent):
         """
         target_industry = payload.get("target_industry", "SaaS")
         target_location = payload.get("target_location", "USA")
+        location_scope = payload.get("target_location_scope")
         max_leads = payload.get("max_leads", 10)
         platform = payload.get("platform", "apollo").lower()
 
@@ -126,6 +145,10 @@ Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce
                     location=target_location,
                     max_leads=max_leads,
                 )
+
+        # Enforce the selected city against provider-supplied address evidence.
+        if location_scope:
+            leads = [lead for lead in leads if _matches_selected_city(lead, location_scope)]
 
         # ── 2. Fallback to LLM or Mock Generation if no live leads ──
         if not leads:
