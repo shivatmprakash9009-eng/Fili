@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isSessionConfigured, isSessionValid, SESSION_COOKIE } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,18 @@ async function handle(request: NextRequest, context: RouteContext) {
 
   const base = backendUrl();
   const apiToken = process.env.FILI_API_TOKEN?.trim();
+  if (process.env.NODE_ENV === "production" && !isSessionConfigured()) {
+    return NextResponse.json(
+      { error: "Workspace access is not configured. Set FILI_DASHBOARD_PASSWORD and FILI_SESSION_SECRET." },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+  if (isSessionConfigured() && !isSessionValid(request.cookies.get(SESSION_COOKIE)?.value)) {
+    return NextResponse.json(
+      { error: "Workspace session expired. Unlock Fili to continue." },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
+  }
   if (process.env.NODE_ENV === "production" && !apiToken) {
     return NextResponse.json(
       { error: "FILI_API_TOKEN is required for production API access." },
