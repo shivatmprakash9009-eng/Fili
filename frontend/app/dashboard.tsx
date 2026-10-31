@@ -359,7 +359,6 @@ function ProspectDrawer({ lead, scanning, onClose, onScan }: {
   onScan: () => void;
 }) {
   const [expandedFollowUp,setExpandedFollowUp]=useState<number|null>(0);
-  useEffect(()=>{setExpandedFollowUp(0);},[lead]);
   useEffect(()=>{
     if(!lead)return;
     const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape")onClose();};
@@ -463,10 +462,8 @@ function Dashboard() {
   const [scanning,setScanning]=useState(false);
   const [notice,setNotice]=useState("");
   const searchRef=useRef<HTMLInputElement>(null);
-  const [today,setToday]=useState("");
 
   const refreshStatus=useCallback(async()=>{
-    setApiState("checking");
     try{
       const status=await getApiStatus();
       setApiStatus(status);
@@ -479,7 +476,6 @@ function Dashboard() {
 
   useEffect(()=>{
     void refreshStatus();
-    setToday(new Intl.DateTimeFormat("en-IN",{weekday:"long",day:"numeric",month:"long"}).format(new Date()));
   },[refreshStatus]);
 
   useEffect(()=>{
@@ -657,9 +653,9 @@ function Dashboard() {
           {activeNav==="overview"&&(
             <>
               <div className="page-intro">
-                <div><span className="section-kicker">{today||"YOUR WORKSPACE"}</span><h1>Good work starts with <span>good signals.</span></h1></div>
+                <div><span className="section-kicker">WORKSPACE OVERVIEW</span><h1>Good work starts with <span>good signals.</span></h1></div>
                 <div className="intro-actions">
-                  <button type="button" className="button button-outline" onClick={()=>refreshStatus()}><Activity size={15}/> Refresh status</button>
+                  <button type="button" className="button button-outline" onClick={()=>{setApiState("checking");void refreshStatus();}}><Activity size={15}/> Refresh status</button>
                   <button type="button" className="button button-primary" onClick={openCampaign}><Plus size={16}/> New campaign</button>
                 </div>
               </div>
