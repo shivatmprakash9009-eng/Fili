@@ -426,7 +426,7 @@ HTML_PAGE = """<!DOCTYPE html>
           <div id="kpiContent" class="text-2xl font-bold text-white mt-1">--</div>
         </div>
         <div class="card-mono p-4 rounded-lg text-center">
-          <div class="text-xs font-mono text-[#737373]">SENT</div>
+          <div class="text-xs font-mono text-[#737373]">DRY-RUN PREVIEWS</div>
           <div id="kpiSent" class="text-2xl font-bold text-white mt-1">--</div>
         </div>
         <div class="card-mono p-4 rounded-lg text-center">
@@ -458,6 +458,33 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
     </section>
 
+    <section class="card-mono rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <h2 class="text-sm font-semibold text-white">CRM & Daily Prospector</h2>
+        <p class="text-xs text-[#888888] mt-1">Export the current campaign. Daily discovery runs at 09:00 Asia/Kolkata when enabled in environment settings.</p>
+        <p id="dailyScheduleStatus" class="text-xs font-mono text-[#a3a3a3] mt-2">Checking daily schedule...</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/api/export.csv" class="px-3 py-2 rounded bg-white text-black text-xs font-semibold hover:bg-[#d4d4d4]">Export CSV</a>
+        <a href="/api/export.xlsx" class="px-3 py-2 rounded border border-[#333333] text-white text-xs hover:bg-[#171717]">Export Excel</a>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Follow-up Draft Sequence Modal -->
+  <div id="followupModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="card-mono rounded-xl max-w-3xl w-full p-6 space-y-4 border border-[#333333] max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b border-[#1f1f1f] pb-3">
+        <div>
+          <h3 class="font-semibold text-white text-sm">Follow-up Sequence</h3>
+          <p id="followupLeadLabel" class="text-xs text-[#777777] mt-1"></p>
+        </div>
+        <button onclick="closeFollowups()" class="text-[#888888] hover:text-white text-sm font-mono">[ ESC / ✕ ]</button>
+      </div>
+      <div id="followupsContent" class="space-y-3"></div>
+      <p class="text-[11px] text-[#737373]">These are editable drafts only. Fili does not send follow-ups automatically.</p>
+    </div>
   </div>
 
   <!-- Email Draft Inspection Modal -->
@@ -493,6 +520,33 @@ HTML_PAGE = """<!DOCTYPE html>
   <script>
     let currentLeads = [];
     let activeModalLead = null;
+    let currentReport = {};
+    let currentEmailActivity = { sent: 0 };
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[char]);
+    }
+
+    async function refreshDashboardStatus() {
+      try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        const status = document.getElementById('dailyScheduleStatus');
+        if (!status) return;
+        if (data.daily_schedule_enabled) {
+          status.textContent = 'Daily prospector active · ' + data.daily_schedule_time + ' · ' + data.daily_schedule_timezone
+            + (data.next_run ? ' · Next run: ' + data.next_run : '');
+        } else {
+          status.textContent = 'Daily prospector disabled · Set FILI_DAILY_PROSPECTOR_ENABLED=true in .env and restart.';
+        }
+      } catch (_) {
+        const status = document.getElementById('dailyScheduleStatus');
+        if (status) status.textContent = 'Schedule status unavailable.';
+      }
+    }
+    refreshDashboardStatus();
 
     function preset(type) {
       const field = document.getElementById('replyTextInput');
@@ -582,14 +636,17 @@ HTML_PAGE = """<!DOCTYPE html>
 
     function renderCampaign(data) {
       const leads = data.leads || [];
-      const report = data.report || {};
+      const report = data.report || currentReport || {};
+      currentReport = report;
+      const activity = data.email_activity || currentEmailActivity || { sent: 0 };
+      currentEmailActivity = activity;
       const summary = report.summary || {};
       const quality = report.lead_quality || {};
 
       document.getElementById('kpiLeads').innerText = summary.total_leads_found ?? leads.length;
       document.getElementById('kpiContent').innerText = summary.content_pieces_generated ?? leads.length;
-      document.getElementById('kpiSent').innerText = summary.emails_sent ?? leads.length;
-      document.getElementById('kpiQuality').innerText = (quality.average_score ?? 9.4) + '/10';
+      document.getElementById('kpiSent').innerText = (activity.sent ?? 0) + ' preview';
+      document.getElementById('kpiQuality').innerText = (quality.average_score ?? '—') + '/10';
       document.getElementById('campaignBadge').innerText = report.report_title || 'Active';
 
       const tbody = document.getElementById('leadsTableBody');
@@ -598,39 +655,121 @@ HTML_PAGE = """<!DOCTYPE html>
         return;
       }
 
-      tbody.innerHTML = leads.map((l, idx) => `
-        <tr class="hover:bg-[#111111] transition">
-          <td class="py-3.5 px-4 font-medium text-white">
-            ${l.company_name}
-            <div class="flex items-center gap-2 mt-1">
-              <span class="text-[10px] font-mono bg-[#1a1a1a] text-[#a3a3a3] border border-[#262626] px-1.5 py-0.2 rounded">${l.platform || 'Apollo.io'}</span>
-              <span class="text-[11px] text-[#737373] font-mono">${l.website || ''}</span>
-            </div>
-          </td>
-          <td class="py-3.5 px-4 text-[#d4d4d4]">
-            <b>${l.contact_name || 'Decision Maker'}</b> <br>
-            <span class="text-[#888888] font-mono text-[11px]">${l.contact_email || ''}</span>
-            ${l.phone ? `<br><span class="text-[#666666] font-mono text-[10px]">${l.phone}</span>` : ''}
-          </td>
-          <td class="py-3.5 px-4 text-[#a3a3a3] font-mono">${l.location || 'USA'}</td>
-          <td class="py-3.5 px-4 font-mono font-bold text-white">
-            <span class="px-2 py-0.5 rounded bg-[#171717] border border-[#262626]">${l.relevance_score || 9}/10</span>
-          </td>
-          <td class="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
-            <button onclick="viewDraft(${idx})" class="px-2.5 py-1.5 text-xs bg-[#111111] hover:bg-[#1a1a1a] text-[#ededed] border border-[#262626] rounded transition">
-              View Draft
-            </button>
-            <button onclick="sendViaGmail(${idx})" class="px-3 py-1.5 text-xs bg-white text-black font-semibold rounded hover:bg-[#d4d4d4] transition">
-              ✉️ Send in Gmail
-            </button>
-          </td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = leads.map((l, idx) => {
+        const sourceLabel = l.is_synthetic ? 'AI / MOCK · UNVERIFIED' : 'SEARCH RESULT · VERIFY CONTACT';
+        const mx = (l.email_verification || {}).status || 'not_checked';
+        const stack = Array.isArray(l.tech_stack) ? l.tech_stack.join(', ') : '';
+        const actions = []
+          .concat('<button onclick="viewDraft(' + idx + ')" class="px-2.5 py-1.5 text-xs bg-[#111111] text-[#ededed] border border-[#262626] rounded">View Draft</button>')
+          .concat('<button onclick="viewFollowups(' + idx + ')" class="px-2.5 py-1.5 text-xs bg-[#111111] text-[#ededed] border border-[#262626] rounded">Follow-ups</button>')
+          .concat(l.website ? '<button onclick="scanTechStack(' + idx + ')" class="px-2.5 py-1.5 text-xs bg-[#111111] text-[#ededed] border border-[#262626] rounded">Scan Tech</button>' : '')
+          .concat(l.outreach_enabled !== false && l.contact_email ? '<button onclick="sendViaGmail(' + idx + ')" class="px-3 py-1.5 text-xs bg-white text-black font-semibold rounded">Gmail</button>' : '')
+          .concat(l.outreach_enabled !== false && l.whatsapp_url ? '<a href="' + escapeHtml(l.whatsapp_url) + '" target="_blank" rel="noopener noreferrer" class="inline-block px-3 py-1.5 text-xs bg-[#171717] text-white border border-[#333333] rounded">WhatsApp</a>' : '');
+        return '<tr class="hover:bg-[#111111] transition">'
+          + '<td class="py-3.5 px-4 font-medium text-white">' + escapeHtml(l.company_name || 'Unknown company')
+          + '<div class="flex flex-wrap items-center gap-2 mt-1">'
+          + '<span class="text-[10px] font-mono bg-[#1a1a1a] text-[#a3a3a3] border border-[#262626] px-1.5 py-0.2 rounded">' + escapeHtml(l.platform || 'Unknown source') + '</span>'
+          + '<span class="text-[10px] font-mono text-[#777777]">' + escapeHtml(sourceLabel) + '</span></div>'
+          + '<div class="text-[11px] text-[#737373] font-mono mt-1">' + escapeHtml(l.website || '') + '</div>'
+          + (stack ? '<div class="text-[11px] text-[#a3a3a3] mt-1">Stack signals: ' + escapeHtml(stack) + '</div>' : '')
+          + '</td>'
+          + '<td class="py-3.5 px-4 text-[#d4d4d4]"><b>' + escapeHtml(l.contact_name || 'Not found') + '</b><br>'
+          + '<span class="text-[#888888] font-mono text-[11px]">' + escapeHtml(l.contact_email || 'No email') + '</span>'
+          + (l.phone ? '<br><span class="text-[#666666] font-mono text-[10px]">' + escapeHtml(l.phone) + '</span>' : '')
+          + '<br><span class="text-[10px] text-[#777777]">Domain check: ' + escapeHtml(mx) + ' · mailbox not verified</span></td>'
+          + '<td class="py-3.5 px-4 text-[#a3a3a3] font-mono">' + escapeHtml(l.location || '—') + '</td>'
+          + '<td class="py-3.5 px-4 font-mono font-bold text-white"><span class="px-2 py-0.5 rounded bg-[#171717] border border-[#262626]">' + escapeHtml(l.relevance_score ?? '—') + '/10</span></td>'
+          + '<td class="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">' + actions.join('') + '</td></tr>';
+      }).join('');
+    }
+
+    function viewFollowups(idx) {
+      const lead = currentLeads[idx];
+      if (!lead) return;
+      document.getElementById('followupLeadLabel').textContent =
+        (lead.company_name || 'Prospect') + ' · drafts for Day 1, Day 3 and Day 7';
+      const container = document.getElementById('followupsContent');
+      container.innerHTML = '';
+      const sequence = Array.isArray(lead.follow_up_sequence) ? lead.follow_up_sequence : [];
+      sequence.forEach((draft) => {
+        const card = document.createElement('section');
+        card.className = 'rounded-lg border border-[#292929] bg-[#050505] p-4 space-y-2';
+        const heading = document.createElement('div');
+        heading.className = 'text-xs font-mono text-white';
+        heading.textContent = 'DAY ' + draft.day + ' · ' + draft.label;
+        const subject = document.createElement('div');
+        subject.className = 'text-sm font-semibold text-white';
+        subject.textContent = draft.subject || '';
+        const body = document.createElement('pre');
+        body.className = 'text-xs text-[#c4c4c4] whitespace-pre-wrap font-sans';
+        body.textContent = draft.body || '';
+        const actions = document.createElement('div');
+        actions.className = 'flex gap-2';
+        const copy = document.createElement('button');
+        copy.className = 'px-3 py-1.5 rounded border border-[#333333] text-xs text-white';
+        copy.textContent = 'Copy draft';
+        copy.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText((draft.subject || '') + '\n\n' + (draft.body || ''));
+            copy.textContent = 'Copied';
+          } catch (_) { copy.textContent = 'Copy unavailable'; }
+        };
+        actions.appendChild(copy);
+        if (lead.outreach_enabled !== false && lead.contact_email) {
+          const open = document.createElement('button');
+          open.className = 'px-3 py-1.5 rounded bg-white text-black text-xs font-semibold';
+          open.textContent = 'Open email draft';
+          open.onclick = () => openGmailDraft(lead.contact_email, draft.subject, draft.body);
+          actions.appendChild(open);
+        }
+        card.append(heading, subject, body, actions);
+        container.appendChild(card);
+      });
+      if (!sequence.length) container.textContent = 'No follow-up drafts available for this lead.';
+      document.getElementById('followupModal').classList.remove('hidden');
+    }
+
+    function closeFollowups() {
+      document.getElementById('followupModal').classList.add('hidden');
+    }
+
+    function openGmailDraft(email, subject, body) {
+      const url = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(email || '')
+        + '&su=' + encodeURIComponent(subject || '') + '&body=' + encodeURIComponent(body || '');
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    async function scanTechStack(idx) {
+      const lead = currentLeads[idx];
+      if (!lead || !lead.website) return;
+      const status = document.getElementById('campaignStatus');
+      status.textContent = 'Scanning public website signals...';
+      try {
+        const response = await fetch('/api/scan-tech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: lead.website })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+        lead.tech_stack = data.signals || [];
+        lead.tech_scan_status = data.status;
+        renderCampaign({ leads: currentLeads, report: currentReport });
+        status.textContent = data.signals?.length
+          ? 'Technology signals detected: ' + data.signals.join(', ')
+          : 'Scan complete; no known technology signals were detected.';
+      } catch (error) {
+        status.textContent = 'Website scan blocked or unavailable: ' + (error.message || error);
+      }
     }
 
     function sendViaGmail(idx) {
       const lead = currentLeads[idx];
       if (!lead) return;
+      if (lead.outreach_enabled === false) {
+        document.getElementById('campaignStatus').textContent = 'AI-generated preview only: contact details are unverified and outreach is disabled.';
+        return;
+      }
       const email = lead.contact_email || '';
       const subject = lead.email_subject || `Quick question regarding ${lead.company_name}`;
       const body = lead.email_body || `Hi ${lead.contact_name || ''},\\n\\nI wanted to reach out regarding ${lead.company_name}.`;
@@ -681,7 +820,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') { closeModal(); closeFollowups(); }
     });
   </script>
 </body>
