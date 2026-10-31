@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCountries, getStatesOfCountry, getCitiesOfState } from "@countrystatecity/countries-browser";
 import { LoaderCircle, MapPin } from "lucide-react";
 
@@ -32,21 +32,22 @@ export default function LocationSelector({ value, onChange }: {
   const stateRequestId = useRef(0);
   const cityRequestId = useRef(0);
 
-  const loadCountries = useCallback(async () => {
-    try {
-      const data = await getCountries();
-      setCountries(data.map(({ name, iso2, emoji }) => ({ name, code: iso2, emoji })));
-      setError("");
-    } catch {
-      setError("Country data could not be loaded. Check your connection and retry.");
-    } finally {
-      setLoadingCountries(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void loadCountries();
-  }, [loadCountries]);
+    let active = true;
+    getCountries()
+      .then(data => {
+        if (active) {
+          setCountries(data.map(({ name, iso2, emoji }) => ({ name, code: iso2, emoji })));
+        }
+      })
+      .catch(() => {
+        if (active) setError("Country data could not be loaded. Check your connection and retry.");
+      })
+      .finally(() => {
+        if (active) setLoadingCountries(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   const filteredCities = useMemo(() => {
     const term = citySearch.trim().toLowerCase();
@@ -136,7 +137,11 @@ export default function LocationSelector({ value, onChange }: {
 
   const retryCountries = () => {
     setLoadingCountries(true);
-    void loadCountries();
+    setError("");
+    getCountries()
+      .then(data => setCountries(data.map(({ name, iso2, emoji }) => ({ name, code: iso2, emoji }))))
+      .catch(() => setError("Country data could not be loaded. Check your connection and retry."))
+      .finally(() => setLoadingCountries(false));
   };
 
   return (
