@@ -282,7 +282,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
   const [locationScope,setLocationScope]=useState<CampaignPayload["location_scope"]|null>(null);
   const [count,setCount]=useState("10");
   const [name,setName]=useState("New campaign");
-  const [platform,setPlatform]=useState<CampaignPayload["platform"]>("web_search");
+  const [platform,setPlatform]=useState<CampaignPayload["platform"]>("google_maps");
 
   useEffect(()=>{
     if(!open)return;
