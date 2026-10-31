@@ -74,7 +74,7 @@ async function handle(request: NextRequest, context: RouteContext) {
     }
   }
 
-  const target = new URL(key, base);
+  const target = new URL(`api/${key}`, base);
   const timeout = key === "run-campaign" ? 110_000 : 18_000;
 
   try {
