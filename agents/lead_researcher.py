@@ -18,6 +18,7 @@ from utils.live_search import (
     fetch_serpapi_leads,
     get_apollo_key,
     get_serpapi_key,
+    ProviderRequestError,
 )
 
 
@@ -86,62 +87,69 @@ class LeadResearcherAgent(BaseAgent):
         source_status = "not_configured"
         source_message = ""
 
-        if platform == "apollo":
-            if get_apollo_key():
-                raw_leads = await fetch_apollo_leads(
-                    industry=target_industry,
-                    location=target_location,
-                    max_leads=max_leads,
-                )
-                source_status = "results" if raw_leads else "no_results_or_provider_error"
-            else:
-                source_message = "Apollo API key is not configured."
-        elif platform == "google_maps":
-            if get_serpapi_key():
-                raw_leads = await fetch_serpapi_leads(
+        provider_error: dict[str, Any] | None = None
+        try:
+            if platform == "apollo":
+                if get_apollo_key():
+                    raw_leads = await fetch_apollo_leads(
+                        industry=target_industry,
+                        location=target_location,
+                        max_leads=max_leads,
+                    )
+                    source_status = "results" if raw_leads else "no_results"
+                else:
+                    source_message = "Apollo API key is not configured."
+            elif platform == "google_maps":
+                if get_serpapi_key():
+                    raw_leads = await fetch_serpapi_leads(
+                        query=target_industry,
+                        location=target_location,
+                        max_leads=max_leads,
+                        engine="google_maps",
+                    )
+                    source_status = "results" if raw_leads else "no_results"
+                else:
+                    source_message = "SerpAPI key is not configured."
+            elif platform == "indiamart":
+                raw_leads = await fetch_indiamart_leads(
                     query=target_industry,
                     location=target_location,
                     max_leads=max_leads,
-                    engine="google_maps",
                 )
-                source_status = "results" if raw_leads else "no_results_or_provider_error"
+                source_status = "results" if raw_leads else "connector_disabled_or_no_results"
+                if not raw_leads:
+                    source_message = (
+                        "IndiaMART HTML discovery is disabled by default. Use an approved provider "
+                        "integration or enable the connector only after reviewing its terms."
+                    )
+            elif platform == "web_search":
+                if get_serpapi_key():
+                    raw_leads = await fetch_serpapi_leads(
+                        query=target_industry,
+                        location=target_location,
+                        max_leads=max_leads,
+                        engine="google",
+                    )
+                    source_status = "results" if raw_leads else "no_results"
+                else:
+                    raw_leads = await fetch_duckduckgo_leads(
+                        query=target_industry,
+                        location=target_location,
+                        max_leads=max_leads,
+                    )
+                    source_status = "search_hints" if raw_leads else "no_results"
             else:
-                source_message = "SerpAPI key is not configured."
-        elif platform == "indiamart":
-            raw_leads = await fetch_indiamart_leads(
-                query=target_industry,
-                location=target_location,
-                max_leads=max_leads,
-            )
-            source_status = "results" if raw_leads else "connector_disabled_or_no_results"
-            if not raw_leads:
+                # There is no dedicated LinkedIn connector in this repository.
+                source_status = "unsupported_connector"
                 source_message = (
-                    "IndiaMART HTML discovery is disabled by default. Use an approved provider "
-                    "integration or enable the connector only after reviewing its terms."
+                    "A dedicated LinkedIn API integration is not configured. "
+                    "Fili will not label generic web or AI results as LinkedIn data."
                 )
-        elif platform == "web_search":
-            if get_serpapi_key():
-                raw_leads = await fetch_serpapi_leads(
-                    query=target_industry,
-                    location=target_location,
-                    max_leads=max_leads,
-                    engine="google",
-                )
-                source_status = "results" if raw_leads else "no_results_or_provider_error"
-            else:
-                raw_leads = await fetch_duckduckgo_leads(
-                    query=target_industry,
-                    location=target_location,
-                    max_leads=max_leads,
-                )
-                source_status = "search_hints" if raw_leads else "no_results"
-        else:
-            # There is no dedicated LinkedIn connector in this repository.
-            source_status = "unsupported_connector"
-            source_message = (
-                "A dedicated LinkedIn API integration is not configured. "
-                "Fili will not label generic web or AI results as LinkedIn data."
-            )
+    
+        except ProviderRequestError as exc:
+            source_status = "provider_error"
+            source_message = f"{exc.provider}: {exc.reason}"
+            provider_error = {"provider": exc.provider, "reason": exc.reason, "status_code": exc.status_code}
 
         normalized: list[dict[str, Any]] = []
         for raw in raw_leads:
@@ -203,6 +211,7 @@ class LeadResearcherAgent(BaseAgent):
             "strict_city_filter": bool(location_scope),
             "location_verified_results": sum(1 for lead in leads if lead.get("location_verified")),
             "contact_verified_results": sum(1 for lead in leads if lead.get("contact_verified")),
+            "provider_error": provider_error,
         }
 
         self.logger.info("Discovery complete: %s", diagnostics)
