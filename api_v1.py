@@ -18,6 +18,7 @@ from urllib.parse import quote
 import firebase_admin
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import auth as firebase_auth, credentials
 from pydantic import BaseModel, Field, field_validator
 
@@ -36,6 +37,23 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+)
+
+def _cors_origins() -> list[str]:
+    """Return explicitly trusted browser origins; opaque null origins are intentionally excluded."""
+    configured = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    defaults = "https://fili-nine.vercel.app,http://localhost:8000,http://127.0.0.1:8000"
+    return sorted({origin.strip().rstrip("/") for origin in (configured or defaults).split(",") if origin.strip() and origin.strip() != "null"})
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+    expose_headers=["Retry-After", "X-Request-ID"],
+    max_age=600,
 )
 
 API_PREFIX = "/v1"
