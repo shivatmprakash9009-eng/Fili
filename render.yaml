@@ -2,7 +2,7 @@ services:
   - type: web
     name: fili-api
     runtime: python
-    plan: starter
+    plan: free
     region: ohio
     branch: main
     rootDir: .
