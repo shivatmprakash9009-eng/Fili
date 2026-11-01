@@ -786,3 +786,80 @@ body { color: var(--ink); letter-spacing: -.005em; }
   .integrity-grid { gap:8px; }
   .integrity-grid>div { padding:10px; }
 }
+
+
+/* Fili design tokens — Inter / Slate */
+:root {
+  --canvas: #F8FAFC;
+  --paper: #FFFFFF;
+  --ink: #1E293B;
+  --ink-soft: #334155;
+  --muted: #64748B;
+  --line: #E2E8F0;
+  --line-strong: #CBD5E1;
+  --blue: #2459D3;
+  --blue-strong: #1746B2;
+  --blue-soft: #EFF4FF;
+  --blue-pale: #F8FAFF;
+  --green: #167B58;
+  --amber: #A66B17;
+  --violet: #5B55A6;
+  --shadow: 0 16px 44px rgba(15, 23, 42, .045);
+  --shadow-small: 0 2px 10px rgba(15, 23, 42, .035);
+}
+html, body, .app-shell { background: #F8FAFC; }
+body {
+  color: #1E293B;
+  font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+button, input, select, textarea { font-family: inherit; }
+.page-intro h1,
+.command-hero h2,
+.panel-heading h3,
+.integrity-heading h3,
+.drawer-header h2,
+.campaign-modal h2,
+.settings-heading h3 {
+  color: #0F172A;
+  font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+}
+.page-subtitle,
+.stat-hint,
+.cell-copy span,
+.workflow-copy span,
+.workflow-step-state,
+.app-footer,
+.breadcrumb,
+.section-kicker,
+.nav-label,
+.command-index,
+.command-meta > span {
+  color: #64748B;
+}
+.topbar { background: rgba(248,250,252,.94); border-bottom-color: #E2E8F0; }
+.page-content { background: transparent; }
+.surface-card, .stat-card { background: #FFFFFF; border-color: #E2E8F0; }
+.page-intro h1 { color: #0F172A; }
+.page-intro h1 span:not(.title-period) { color: #2459D3; }
+.command-hero { background: linear-gradient(112deg,#FFFFFF 0%,#FFFFFF 68%,#F1F5F9 100%); border-color: #E2E8F0; }
+.command-hero h2 { color: #0F172A; }
+.command-hero p { color: #64748B; }
+.panel-heading h3, .integrity-heading h3 { color: #1E293B; }
+.prospects-table th { background: #F8FAFC; color: #64748B; }
+.prospects-table td { color: #334155; border-color: #E2E8F0; }
+.prospects-table tbody tr:hover { background: #F8FAFC; }
+.cell-copy strong, .workflow-copy strong, .workflow-footer strong { color: #1E293B; }
+.cell-copy span, .workflow-copy span, .workflow-step-state, .workflow-footer span { color: #64748B; }
+.integrity-grid > div { background: #F8FAFC; border-color: #E2E8F0; }
+.integrity-grid strong { color: #0F172A; }
+.integrity-grid span { color: #64748B; }
+.field-group > span { color: #475569; }
+.field-group input, .field-group select { color: #1E293B; border-color: #CBD5E1; }
+.global-search { background: #FFFFFF; border-color: #E2E8F0; }
+.global-search input { color: #1E293B; }
+.breadcrumb strong { color: #1E293B; }
+.status-pill { color: #64748B; border-color: #E2E8F0; }
+:focus-visible { outline-color: rgba(36,89,211,.42); }
