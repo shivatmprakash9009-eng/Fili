@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import {
-  GitBranch, ArrowLeft, ArrowRight, Eye, EyeOff, LoaderCircle,
+  ArrowLeft, ArrowRight, Eye, EyeOff, LoaderCircle,
   LockKeyhole, Mail, ShieldCheck, Sparkles, CheckCircle2
 } from "lucide-react";
 import {
@@ -17,6 +17,14 @@ import { getFirebaseAuth } from "../lib/firebase";
 import "./AuthScreen.css";
 
 type Mode = "login" | "signup" | "forgot";
+
+function GitHubMark() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+      <path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.56.1.76-.24.76-.54v-2.08c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15 1 .1.76 2.03 3.2 1.55.1-.72.4-1.2.72-1.48-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.15a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.15 3.05-1.15.61 1.54.23 2.68.11 2.96.72.78 1.15 1.78 1.15 3 0 4.29-2.61 5.24-5.1 5.51.4.35.76 1.03.76 2.08v3.1c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z" />
+    </svg>
+  );
+}
 
 const friendlyError = (code: string) => {
   const errors: Record<string, string> = {
@@ -124,7 +132,7 @@ export default function AuthScreen({ mode }: { mode: Mode }) {
 
           {mode !== "forgot" && <div className="auth-socials">
             <button type="button" onClick={() => handleSocial("google")} disabled={busy}><span className="google-g">G</span> Continue with Google</button>
-            <button type="button" onClick={() => handleSocial("github")} disabled={busy}><GitBranch size={17}/> GitHub</button>
+            <button type="button" onClick={() => handleSocial("github")} disabled={busy}><GitHubMark/> GitHub</button>
           </div>}
           {mode !== "forgot" && <div className="auth-divider"><span/> <small>OR CONTINUE WITH EMAIL</small> <span/></div>}
 
