@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import {
   Github, ArrowLeft, ArrowRight, Eye, EyeOff, LoaderCircle,
   LockKeyhole, Mail, ShieldCheck, Sparkles, CheckCircle2
@@ -13,6 +14,7 @@ import {
   signInWithPopup, updateProfile
 } from "firebase/auth";
 import { getFirebaseAuth } from "../lib/firebase";
+import "./AuthScreen.css";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -144,7 +146,7 @@ export default function AuthScreen({ mode }: { mode: Mode }) {
           {mode === "login" && <p className="auth-switch">New to Fili? <Link href="/signup">Create an account <ArrowRight size={13}/></Link></p>}
           {mode === "signup" && <p className="auth-switch">Already have an account? <Link href="/login">Sign in <ArrowRight size={13}/></Link></p>}
           {mode === "forgot" && <p className="auth-switch"><Link href="/login"><ArrowLeft size={13}/> Back to sign in</Link></p>}
-          <div className="auth-legal">By continuing, you agree to Fili’s <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</div>
+          <div className="auth-legal">By continuing, you agree to Fili’s Terms and Privacy Policy.</div>
         </div>
         <div className="auth-panel-bottom"><span>FILI / AUTHENTICATION</span><span>ENCRYPTED CONNECTION <i/></span></div>
       </section>
