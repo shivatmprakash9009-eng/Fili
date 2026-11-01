@@ -52,6 +52,22 @@ class LeadQualityTests(unittest.TestCase):
             "insufficient_location_evidence",
         )
 
+
+    def test_missing_country_evidence_is_rejected(self):
+        self.assertFalse(match_selected_location(
+            "New York, New York",
+            self.scope,
+        )[0])
+
+    def test_deduplication_uses_domain_across_different_provider_ids(self):
+        leads = [
+            {"company_name": "Acme", "platform": "Maps", "source_id": "place_1",
+             "website": "https://acme.example", "location": "Austin, Texas, USA"},
+            {"company_name": "Acme Incorporated", "platform": "Apollo", "source_id": "org_9",
+             "website": "https://www.acme.example", "location": "Austin, Texas, USA"},
+        ]
+        self.assertEqual(len(deduplicate_leads(leads)), 1)
+
     def test_normalization_never_invents_contact_details(self):
         lead = normalize_discovered_lead(
             {
