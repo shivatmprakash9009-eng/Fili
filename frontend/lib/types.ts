@@ -29,7 +29,20 @@ export type Lead = {
   email_subject?: string;
   email_body?: string;
   email_quality?: number;
-  relevance_score?: number;
+  /** Sales relevance is not inferred from evidence completeness. Null means not scored. */
+  relevance_score?: number | null;
+  /** 0-100 provider-evidence completeness score; not a conversion probability. */
+  discovery_quality_score?: number;
+  relevance_score_status?: "not_scored" | string;
+  quality_signals?: string[];
+  field_evidence?: Record<string, { source: string; status: string }>;
+  source_id?: string;
+  source_url?: string;
+  retrieved_at?: string;
+  location_verified?: boolean;
+  location_match_status?: string;
+  is_live_data?: boolean;
+  email_verification_status?: string;
   email_domain?: string;
   email_verification?: EmailVerification;
   phone_available?: boolean;
@@ -57,6 +70,21 @@ export type CampaignResponse = {
   success: boolean;
   error?: string;
   leads: Lead[];
+  provider?: string;
+  source_status?: string;
+  message?: string;
+  location_filter_applied?: boolean;
+  diagnostics?: {
+    provider?: string;
+    raw_results?: number;
+    normalized_results?: number;
+    duplicates_removed?: number;
+    rejected_by_location?: number;
+    returned_results?: number;
+    strict_city_filter?: boolean;
+    location_verified_results?: number;
+    contact_verified_results?: number;
+  };
   content?: unknown[];
   report?: {
     report_title?: string;
