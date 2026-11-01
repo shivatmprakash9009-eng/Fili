@@ -60,16 +60,31 @@ def match_selected_location(
         return False, "state_mismatch"
     # Do not reject abbreviated/local addresses that omit country, but reject
     # explicit contradictory country evidence.
-    if country and normalize_text(country) not in normalize_text(address):
-        country_code = str(scope.get("country_code") or "").strip()
-        if country_code and contains_place(address, country_code):
-            pass
-        elif len(normalize_text(address).split()) >= 3 and any(
-            marker in normalize_text(address)
-            for marker in ("united states", "united kingdom", "canada", "australia", "india",
-                           "germany", "france", "singapore", "united arab emirates")
-        ):
+    if country:
+        aliases = {
+            "united states": {"united states", "usa", "us"},
+            "united kingdom": {"united kingdom", "uk", "great britain"},
+            "india": {"india"},
+            "canada": {"canada"},
+            "australia": {"australia"},
+            "germany": {"germany"},
+            "france": {"france"},
+            "singapore": {"singapore"},
+            "united arab emirates": {"united arab emirates", "uae"},
+        }
+        selected = normalize_text(country)
+        selected_aliases = aliases.get(selected, {selected})
+        address_components = {
+            normalize_text(component)
+            for component in re.split(r"[,|·]+", address)
+        }
+        known_countries = set().union(*aliases.values())
+        explicit_countries = address_components.intersection(known_countries)
+        if explicit_countries and not explicit_countries.intersection(selected_aliases):
             return False, "country_mismatch"
+        country_code = normalize_text(scope.get("country_code") or "")
+        if country_code and country_code in address_components:
+            pass
     return True, "matched_city_state"
 
 
@@ -196,7 +211,10 @@ def normalize_discovered_lead(
         signals.append("provider_reputation_signal")
     lead["discovery_quality_score"] = min(score, 100)
     lead["quality_signals"] = signals
-    lead["relevance_score"] = max(1, min(10, round(lead["discovery_quality_score"] / 10)))
+    # Evidence completeness is not buyer relevance; relevance is intentionally
+    # left unscored until a product ICP or explicit ranking model is defined.
+    lead["relevance_score"] = None
+    lead["relevance_score_status"] = "not_scored"
     lead["outreach_enabled"] = bool(
         lead["contact_verified"] and email and not lead["is_synthetic"]
     )
