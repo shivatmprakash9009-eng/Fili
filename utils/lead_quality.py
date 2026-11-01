@@ -76,33 +76,32 @@ def match_selected_location(
         state_text_match = len(matching_city_components) >= 2
     if not (state_text_match or code_match):
         return False, "state_mismatch"
-    # Do not reject abbreviated/local addresses that omit country, but reject
-    # explicit contradictory country evidence.
-    if country:
-        aliases = {
-            "united states": {"united states", "usa", "us"},
-            "united kingdom": {"united kingdom", "uk", "great britain"},
-            "india": {"india"},
-            "canada": {"canada"},
-            "australia": {"australia"},
-            "germany": {"germany"},
-            "france": {"france"},
-            "singapore": {"singapore"},
-            "united arab emirates": {"united arab emirates", "uae"},
-        }
-        selected = normalize_text(country)
-        selected_aliases = aliases.get(selected, {selected})
-        address_components = {
-            normalize_text(component)
-            for component in re.split(r"[,|·]+", address)
-        }
-        known_countries = set().union(*aliases.values())
-        explicit_countries = address_components.intersection(known_countries)
-        if explicit_countries and not explicit_countries.intersection(selected_aliases):
-            return False, "country_mismatch"
-        country_code = normalize_text(scope.get("country_code") or "")
-        if country_code and country_code in address_components:
-            pass
+    # The selected country is part of the user's exact scope, not optional
+    # context. Missing country evidence must fail closed rather than silently
+    # accepting a same-named city/state from another country.
+    aliases = {
+        "united states": {"united states", "usa", "us"},
+        "united kingdom": {"united kingdom", "uk", "great britain"},
+        "india": {"india"},
+        "canada": {"canada"},
+        "australia": {"australia"},
+        "germany": {"germany"},
+        "france": {"france"},
+        "singapore": {"singapore"},
+        "united arab emirates": {"united arab emirates", "uae"},
+    }
+    selected_country = normalize_text(country)
+    selected_aliases = aliases.get(selected_country, {selected_country})
+    address_components_set = {
+        normalize_text(component)
+        for component in re.split(r"[,|·]+", address)
+    }
+    country_code = normalize_text(scope.get("country_code") or "")
+    if not (
+        address_components_set.intersection(selected_aliases)
+        or (country_code and country_code in address_components_set)
+    ):
+        return False, "country_not_confirmed"
     return True, "matched_city_state"
 
 
@@ -249,13 +248,21 @@ def deduplicate_leads(leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
         host = urlsplit(website).hostname.casefold().removeprefix("www.") if website else ""
         name = normalize_text(lead.get("company_name"))
         location = normalize_text(lead.get("location"))
-        key = (
-            f"id:{lead.get('platform', '')}:{source_id}" if source_id
-            else f"domain:{host}:{location}" if host
-            else f"name:{name}:{location}"
-        )
-        if not name or key in seen:
+        if not name:
             continue
-        seen.add(key)
+        # Check every available identity signal. A different provider ID must
+        # not allow the same company/domain/address to appear twice.
+        keys: list[str] = []
+        if source_id:
+            keys.append(f"id:{str(lead.get('platform', '')).casefold()}:{source_id}")
+        if host:
+            keys.append(f"domain:{host}:{location}")
+        if location:
+            keys.append(f"name:{name}:{location}")
+        else:
+            keys.append(f"name:{name}")
+        if any(key in seen for key in keys):
+            continue
+        seen.update(keys)
         output.append(lead)
     return output
