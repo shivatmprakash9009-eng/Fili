@@ -174,3 +174,25 @@ MIT License — free to use, modify, and distribute.
 A new Next.js App Router frontend is being developed in [frontend/](frontend/README.md). It uses React + TypeScript, Motion animations, an electric-blue / monochrome interface, responsive navigation and a prospect detail drawer. The frontend proxies only allowlisted calls to the existing Python API.
 
 For local setup and Vercel configuration, see the [frontend guide](frontend/README.md). Authentication is intentionally deferred while Fili is in active development. The current Python engine still holds campaign data in memory. Multi-user identity, tenant isolation, persistent CRM storage, billing, audit logs and multi-instance scheduling are not yet implemented. This is a development-stage SaaS foundation, not yet ready for external customer data.
+
+
+### Discovery integrity and accuracy controls
+
+The discovery engine is evidence-first:
+
+- Apollo organization discovery uses Apollo's current mixed-company search endpoint. Organization search does not itself prove a named decision-maker, mailbox or direct phone number.
+- Google Maps results are treated as provider-supplied business listings. A search location is not accepted as proof of a result's address.
+- Strict country/state/city searches require address evidence that matches the selected city and state. Results with missing or mismatched location evidence are excluded.
+- Search-result snippets are discovery hints, not verified company or contact records.
+- Missing contact names, titles, emails, phone numbers, employee counts and company facts remain empty. Fili does not invent role emails or placeholder phone numbers.
+- Leads carry source, source ID, source URL, retrieval timestamp, field-evidence metadata and a discovery-evidence score. That score measures evidence completeness, not purchase intent or conversion probability.
+- Duplicate provider IDs and company/domain/location combinations are removed before results are returned.
+- Outreach remains disabled unless a contact email is actually supplied and the provider explicitly marks the contact as verified. Domain MX checks still do not prove mailbox existence or deliverability.
+- LinkedIn is not a live connector in this repository. The UI and API must not describe generic web results as LinkedIn data.
+- IndiaMART HTML scraping is disabled by default. Enable \`FILI_ENABLE_INDIAMART_SCRAPER=true\` only after reviewing the source's current terms and suitability; scraped listings remain unverified.
+
+Provider requests use bounded timeouts and retry only for transient network, rate-limit and server errors. Apollo and SerpAPI usage remains subject to their account-level limits and charges. An empty result can mean no matching records, provider restrictions, missing credentials or a provider error; it is not proof that no businesses exist.
+
+### Current backend boundary
+
+This change strengthens discovery correctness and source accountability. It does not yet add multi-tenant authentication, persistent lead storage, durable background jobs, or API usage billing. Those require a configured production database/queue and an explicit workspace identity model; they must be implemented before opening Fili to unrestricted external customers.
