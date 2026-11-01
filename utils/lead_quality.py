@@ -54,9 +54,27 @@ def match_selected_location(
     address = str(location or "").strip()
     if not address or not city or not (state or state_code):
         return False, "insufficient_location_evidence"
-    if not contains_place(address, city):
+    address_components = [
+        normalize_text(component)
+        for component in re.split(r"[,|·]+", address)
+    ]
+    city_normalized = normalize_text(city)
+    matching_city_components = [
+        component for component in address_components
+        if component == city_normalized or component.startswith(city_normalized + " ")
+    ]
+    if not matching_city_components:
         return False, "city_mismatch"
-    if not (contains_place(address, state) or (state_code and contains_place(address, state_code))):
+
+    code_match = bool(state_code and contains_place(address, state_code))
+    state_normalized = normalize_text(state)
+    state_text_match = bool(state and contains_place(address, state))
+    # When city and state share the same name (e.g. New York, New York),
+    # the city occurrence cannot also prove the state. Require a second
+    # address component or an explicit state code.
+    if state_normalized and state_normalized == city_normalized:
+        state_text_match = len(matching_city_components) >= 2
+    if not (state_text_match or code_match):
         return False, "state_mismatch"
     # Do not reject abbreviated/local addresses that omit country, but reject
     # explicit contradictory country evidence.
