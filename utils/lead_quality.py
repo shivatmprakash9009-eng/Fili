@@ -17,13 +17,23 @@ def normalize_text(value: Any) -> str:
     """Normalize text for deterministic, token-aware comparisons."""
     raw = unicodedata.normalize("NFKD", str(value or "")).casefold()
     raw = html.unescape(raw)
+    raw = "".join(char for char in raw if not unicodedata.combining(char))
     return re.sub(r"[^a-z0-9]+", " ", raw).strip()
 
 
 def contains_place(haystack: str, needle: str) -> bool:
-    normalized_haystack = f" {normalize_text(haystack)} "
+    """Match a full comma-delimited address component, not a substring."""
     normalized_needle = normalize_text(needle)
-    return bool(normalized_needle and f" {normalized_needle} " in normalized_haystack)
+    if not normalized_needle:
+        return False
+    components = [
+        normalize_text(component)
+        for component in re.split(r"[,|·]+", str(haystack or ""))
+    ]
+    return any(
+        component == normalized_needle or component.startswith(normalized_needle + " ")
+        for component in components
+    )
 
 
 def match_selected_location(
