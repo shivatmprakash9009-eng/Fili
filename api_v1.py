@@ -370,6 +370,30 @@ def research_prospect(
     return {"data": {"id": rows[0]["id"], **researched}}
 
 
+@app.get(f"{API_PREFIX}/account/usage", tags=["API keys"])
+def get_account_usage(user: dict[str, Any] = Depends(current_firebase_user)):
+    """Usage overview for the signed-in dashboard owner; no API key secret required."""
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    rows, _ = _supabase_request("GET", "fili_api_usage", params={
+        "select": "id,route,status_code,created_at",
+        "owner_uid": f"eq.{user['uid']}",
+        "created_at": f"gte.{since}",
+        "order": "created_at.desc",
+        "limit": "10000",
+    })
+    events = rows or []
+    return {
+        "period_days": 30,
+        "requests": len(events),
+        "successful": sum(1 for event in events if int(event.get("status_code") or 0) < 400),
+        "failed": sum(1 for event in events if int(event.get("status_code") or 0) >= 400),
+        "by_route": {
+            route: sum(1 for event in events if event.get("route") == route)
+            for route in sorted({event.get("route", "unknown") for event in events})
+        },
+    }
+
+
 @app.get(f"{API_PREFIX}/usage", tags=["Usage"])
 def get_usage(key: dict[str, Any] = Depends(require_api_scope("usage:read"))):
     since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()

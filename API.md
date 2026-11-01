@@ -45,7 +45,7 @@ Apply `supabase/migrations/202611020001_fili_public_api.sql` to the Fili Supabas
 | POST | `/v1/prospects/search` | API key: `prospects:write` | Search Apollo, Google Maps and web search |
 | GET | `/v1/prospects/{id}` | API key: `prospects:read` | Read an owned prospect |
 | POST | `/v1/prospects/research?prospect_id=...` | API key: `prospects:read` | Return bounded evidence-aware enrichment |
-| GET | `/v1/usage` | API key: `usage:read` | Last 30 days of API usage |
+| GET | `/v1/usage` | API key: `usage:read` | Last 30 days of API usage for this key owner |\n| GET | `/v1/account/usage` | Firebase ID token | Last 30 days of usage for the signed-in dashboard owner |
 
 Search body:
 
