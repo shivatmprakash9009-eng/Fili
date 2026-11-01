@@ -241,7 +241,7 @@ async def fetch_serpapi_leads(
                 "location": "",
                 "platform": "Google Search via SerpAPI",
                 "source_type": "search_result",
-                "source_id": str(item.get("position") or ""),
+                "result_position": item.get("position"),
                 "source_url": link,
                 "key_details": str(item.get("snippet") or "")[:500],
                 "is_live_data": True,
