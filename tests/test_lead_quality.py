@@ -30,7 +30,7 @@ class LeadQualityTests(unittest.TestCase):
             wrong_city_scope,
         )[0])
 
-    def test_wrong_state_is_rejected(self):
+    def test_wrong_state_is_rejected_when_city_and_state_share_name(self):
         address = "New York, California, United States"
         self.assertFalse(match_selected_location(address, self.scope)[0])
 
