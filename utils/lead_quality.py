@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 def normalize_text(value: Any) -> str:
     """Normalize text for deterministic, token-aware comparisons."""
-    raw = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    raw = unicodedata.normalize("NFKD", str(value or "")).casefold()
     raw = html.unescape(raw)
     return re.sub(r"[^a-z0-9]+", " ", raw).strip()
 
@@ -83,7 +83,7 @@ def _valid_email(value: Any) -> str:
     email = str(value or "").strip().lower()
     if email in {"", "unknown", "n/a", "none", "null"}:
         return ""
-    if not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]{2,}", email):
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}", email):
         return ""
     if email.startswith(("info@", "contact@", "sales@", "partnerships@")):
         # These role addresses are retained only if the provider explicitly
@@ -96,7 +96,7 @@ def _valid_phone(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw or any(token in raw.casefold() for token in ("xxxxx", "xxxx", "555-01", "555-010")):
         return ""
-    digits = re.sub(r"\\D", "", raw)
+    digits = re.sub(r"\D", "", raw)
     return raw if 7 <= len(digits) <= 15 else ""
 
 
