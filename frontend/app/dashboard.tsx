@@ -14,7 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { exportUrl, getApiStatus, isOutreachEligible, runCampaign, scanWebsite } from "@/lib/api";
 import type {
-  ApiState, ApiStatus, CampaignPayload, Lead, NavItem
+  ApiState, ApiStatus, CampaignPayload, CampaignResponse, Lead, NavItem
 } from "@/lib/types";
 
 const NAV_ITEMS: { id: NavItem; label: string; icon: typeof LayoutDashboard }[] = [
@@ -223,7 +223,7 @@ function ProspectTable({ leads, onSelect, query, onQueryChange, compact = false 
                 <th>Company</th>
                 <th>Contact</th>
                 <th>Domain</th>
-                <th>Score</th>
+                <th>Evidence</th>
                 <th>Source</th>
                 <th><span className="sr-only">Open details</span></th>
               </tr>
@@ -252,7 +252,7 @@ function ProspectTable({ leads, onSelect, query, onQueryChange, compact = false 
                     <td><span className={"domain-state " + (mx==="mx_found"?"domain-ok":"")}>
                       <span className="domain-indicator"/>{mx.replaceAll("_"," ")}
                     </span></td>
-                    <td><span className="score-value">{typeof lead.relevance_score==="number"?lead.relevance_score+"/10":"—"}</span></td>
+                    <td><span className="score-value">{typeof lead.discovery_quality_score==="number"?lead.discovery_quality_score+"%":"—"}</span></td>
                     <td><span className={"source-pill " + (lead.is_synthetic?"source-preview":"")}>{lead.is_synthetic?"Preview":(lead.platform || "Search")}</span></td>
                     <td><button type="button" className="icon-button row-open" aria-label={"Open " + lead.company_name} onClick={(e)=>{e.stopPropagation();onSelect(lead);}}><ChevronRight size={16}/></button></td>
                   </tr>
@@ -380,8 +380,16 @@ function ProspectDrawer({ lead, scanning, onClose, onScan }: {
                 {lead.is_synthetic && <span className="source-pill source-preview">Preview</span>}
               </div>
               <div className="drawer-score-row">
-                <div><span>Relevance</span><strong>{typeof lead.relevance_score==="number"?lead.relevance_score+"/10":"—"}</strong></div>
-                <div><span>Source</span><strong>{lead.platform || "Search"}</strong></div>
+                <div><span>Evidence completeness</span><strong>{typeof lead.discovery_quality_score==="number"?lead.discovery_quality_score+"%":"—"}</strong></div>
+                <div><span>Location match</span><strong>{lead.location_verified?"Verified":"Unverified"}</strong></div>
+              </div>
+              <div className="drawer-section">
+                <div className="drawer-section-title"><span>Source provenance</span><span className="detail-muted">{lead.source_type?.replaceAll("_"," ") || "SOURCE RECORD"}</span></div>
+                <div className="detail-line"><Globe size={15}/><span>{lead.platform || "Unknown provider"}</span></div>
+                <div className="detail-line"><ShieldCheck size={15}/><span>{lead.location_match_status?.replaceAll("_"," ") || "Location not verified"}</span></div>
+                <div className="detail-line"><Activity size={15}/><span>{lead.retrieved_at ? new Date(lead.retrieved_at).toLocaleString() : "Retrieval time unavailable"}</span></div>
+                {lead.source_url && <a className="source-evidence-link" href={lead.source_url} target="_blank" rel="noopener noreferrer">Open source record <ExternalLink size={13}/></a>}
+                <div className="evidence-list">{Object.entries(lead.field_evidence||{}).map(([field,evidence])=>(<div key={field}><span>{field.replaceAll("_"," ")}</span><strong>{evidence.status.replaceAll("_"," ")}</strong></div>))}</div>
               </div>
               <div className="drawer-section">
                 <div className="drawer-section-title"><span>Contact</span><span className="detail-muted">NOT VERIFIED</span></div>
@@ -453,6 +461,9 @@ function Dashboard() {
   const [query,setQuery]=useState("");
   const [lastCampaign,setLastCampaign]=useState("");
   const [lastRun,setLastRun]=useState<string|null>(null);
+  const [lastDiagnostics,setLastDiagnostics]=useState<CampaignResponse["diagnostics"]|null>(null);
+  const [lastSourceStatus,setLastSourceStatus]=useState("");
+  const [lastSourceMessage,setLastSourceMessage]=useState("");
   const [scanning,setScanning]=useState(false);
   const [notice,setNotice]=useState("");
   const searchRef=useRef<HTMLInputElement>(null);
@@ -508,13 +519,16 @@ function Dashboard() {
       const response=await runCampaign(payload);
       if(!response.success)throw new Error(response.error||"Campaign could not be completed.");
       setLeads(response.leads||[]);
+      setLastDiagnostics(response.diagnostics||null);
+      setLastSourceStatus(response.source_status||"");
+      setLastSourceMessage(response.message||"");
       setLastCampaign(payload.campaign_name);
       setLastRun(new Date().toISOString());
       setCampaignOpen(false);
       setSelectedLead(null);
       setApiState("connected");
       setActiveNav("prospects");
-      showNotice((response.leads||[]).length+" prospects discovered");
+      showNotice(response.source_status==="provider_error" ? "Provider error — review source diagnostics" : (response.leads||[]).length+" prospects discovered");
     }catch(error){
       setCampaignError(error instanceof Error?error.message:"Campaign failed. Check the Fili API connection.");
     }finally{
@@ -549,11 +563,14 @@ function Dashboard() {
   const outreachCount=leads.filter(isOutreachEligible).length;
   const mxCount=leads.filter((lead)=>lead.email_verification?.mx_found).length;
   const techCount=leads.filter((lead)=>(lead.tech_stack||[]).length>0).length;
+  const locationVerified=leads.filter((lead)=>lead.location_verified).length;
+  const contactVerified=leads.filter((lead)=>lead.contact_verified).length;
+  const avgEvidence=leads.length ? Math.round(leads.reduce((total,lead)=>total+(lead.discovery_quality_score||0),0)/leads.length) : 0;
   const stats=[
-    {label:"Prospects found",value:String(leads.length),hint:lastRun?"This campaign":"Current session",icon:Users,tone:"blue"},
-    {label:"Outreach ready",value:String(outreachCount),hint:"Review before contact",icon:Mail,tone:"violet"},
-    {label:"MX domains",value:String(mxCount),hint:"Mail routing found",icon:ShieldCheck,tone:"green"},
-    {label:"Tech scans",value:String(techCount),hint:"Public signals detected",icon:Globe,tone:"amber"}
+    {label:"Companies discovered",value:String(leads.length),hint:lastRun?"Latest discovery run":"No run in this session",icon:Users,tone:"blue"},
+    {label:"Location verified",value:String(locationVerified),hint:"Exact city + state evidence",icon:Globe,tone:"green"},
+    {label:"Contacts verified",value:String(contactVerified),hint:"Provider-confirmed contacts",icon:ShieldCheck,tone:"violet"},
+    {label:"Evidence completeness",value:leads.length?avgEvidence+"%":"—",hint:"Not a sales conversion score",icon:Activity,tone:"amber"}
   ];
 
   const pageTitle=PAGE_TITLES[activeNav];
@@ -655,20 +672,25 @@ function Dashboard() {
                 </div>
               </div>
 
-              <motion.section className="welcome-hero" initial={reducedMotion?false:{opacity:0,y:18}} animate={{opacity:1,y:0}} transition={{duration:reducedMotion?0:.55}}>
-                <div className="hero-copy">
-                  <span className="hero-overline"><span/> PROSPECTING WORKSPACE</span>
-                  <h2>Find the right<br/><em>next customer.</em></h2>
-                  <p>Discover. Enrich. Start meaningful conversations.</p>
+              <section className="command-hero">
+                <div className="command-hero-copy">
+                  <span className="hero-overline"><span/> FILI / INTELLIGENCE WORKSPACE</span>
+                  <h2>Find companies.<br/><em>Verify every signal.</em></h2>
+                  <p>Evidence-led B2B discovery with exact location matching, source transparency and controlled outreach.</p>
                   <div className="hero-buttons">
-                    <button type="button" className="button button-white" onClick={openCampaign}>Launch discovery <ArrowRight size={16}/></button>
-                    <button type="button" className="hero-secondary" onClick={()=>setActiveNav("prospects")}>View prospects <ArrowUpRight size={15}/></button>
+                    <button type="button" className="button button-primary" onClick={openCampaign}><Plus size={16}/> Start discovery</button>
+                    <button type="button" className="button button-outline" onClick={()=>setActiveNav("prospects")}>Review prospects <ArrowRight size={15}/></button>
                   </div>
-                  <div className="hero-status"><span className={apiState==="connected"?"hero-status-dot":"hero-status-dot hero-status-muted"}/>{apiState==="connected"?"Prospecting engine connected":"Connect the engine to start discovering"}</div>
                 </div>
-                <motion.div className="hero-art-wrap" style={{y:artY,opacity:artOpacity}}><SignalArtwork/></motion.div>
-                <div className="hero-corner">F / 001</div>
-              </motion.section>
+                <div className="command-hero-aside">
+                  <div className="command-index">SYSTEM STATUS / 01</div>
+                  <div className="command-state"><span className={apiState==="connected"?"command-state-dot is-live":"command-state-dot"}/>{apiState==="connected"?"Discovery engine online":apiState==="checking"?"Checking engine":"Engine unavailable"}</div>
+                  <div className="command-divider"/>
+                  <div className="command-meta"><span>LAST RUN</span><strong>{lastRun?new Date(lastRun).toLocaleString():"No activity"}</strong></div>
+                  <div className="command-meta"><span>ACTIVE SOURCE</span><strong>{lastDiagnostics?.provider||"Not selected"}</strong></div>
+                </div>
+              </section>
+              {lastSourceMessage && <div className={"discovery-notice "+(lastSourceStatus==="provider_error"?"notice-error":"")}><ShieldCheck size={16}/><div><strong>{lastSourceStatus.replaceAll("_"," ")||"Discovery status"}</strong><span>{lastSourceMessage}</span></div></div>}
 
               <section className="stats-grid" aria-label="Current session metrics">
                 {stats.map((stat,index)=>{
@@ -690,11 +712,16 @@ function Dashboard() {
                 <WorkflowCard apiState={apiState} leadsCount={leads.length} schedule={apiStatus}/>
               </div>
 
-              <div className="bottom-strip">
-                <div className="bottom-strip-mark"><Zap size={16}/></div>
-                <div><strong>{lastCampaign||"Your next campaign starts here"}</strong><span>{lastRun?"Last run "+new Date(lastRun).toLocaleString():"No campaign launched in this session yet."}</span></div>
-                <button type="button" className="text-button" onClick={openCampaign}>Create campaign <ArrowRight size={14}/></button>
-              </div>
+              <section className="surface-card integrity-panel">
+                <div className="integrity-heading"><div><span className="section-kicker">DISCOVERY INTEGRITY</span><h3>Evidence before volume</h3></div><ShieldCheck size={19}/></div>
+                <div className="integrity-grid">
+                  <div><strong>{lastDiagnostics?.raw_results??"—"}</strong><span>Raw provider results</span></div>
+                  <div><strong>{lastDiagnostics?.duplicates_removed??"—"}</strong><span>Duplicates removed</span></div>
+                  <div><strong>{lastDiagnostics?.rejected_by_location??"—"}</strong><span>Location rejected</span></div>
+                  <div><strong>{lastDiagnostics?.returned_results??leads.length}</strong><span>Records returned</span></div>
+                </div>
+                <p>Evidence completeness measures source-backed information. It is not buyer intent, lead relevance or a conversion prediction.</p>
+              </section>
             </>
           )}
 
@@ -710,8 +737,8 @@ function Dashboard() {
               </div>
               <div className="prospect-summary-row">
                 <div><strong>{leads.length}</strong><span>Found this session</span></div>
-                <div><strong>{outreachCount}</strong><span>Outreach enabled</span></div>
-                <div><strong>{mxCount}</strong><span>MX records found</span></div>
+                <div><strong>{locationVerified}</strong><span>City verified</span></div>
+                <div><strong>{contactVerified}</strong><span>Contacts verified</span></div>
                 <div className="summary-source"><span className="summary-source-dot"/>{lastCampaign||"No active campaign"}</div>
               </div>
               <ProspectTable leads={filteredLeads} onSelect={setSelectedLead} query={query} onQueryChange={setQuery}/>
