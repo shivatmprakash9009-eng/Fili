@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: fili-api
+    runtime: python
+    plan: starter
+    region: ohio
+    branch: main
+    rootDir: .
+    buildCommand: pip install -r requirements.txt -r api-requirements.txt
+    startCommand: uvicorn api_v1:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /v1/health
+    autoDeploy: true
+    envVars:
+      - key: FIREBASE_PROJECT_ID
+        value: fili-26b9d
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: SUPABASE_URL
+        value: https://aynlbiuakpaxtmrgaxeh.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: APOLLO_API_KEY
+        sync: false
+      - key: SERPAPI_API_KEY
+        sync: false
+      - key: FILI_API_RATE_LIMIT_PER_MINUTE
+        value: "60"
+      - key: PYTHON_VERSION
+        value: "3.11.11"
