@@ -188,14 +188,14 @@ class LeadResearcherAgent(BaseAgent):
         )
         leads = unique[:max_leads]
 
-        if location_scope and not leads:
+        if location_scope and not leads and source_status != "provider_error":
             source_status = "no_verified_city_matches"
             if not source_message:
                 source_message = (
                     "No provider result contained address evidence matching the selected city and state. "
                     "Fili did not substitute nearby or synthetic records."
                 )
-        elif not leads and not source_message:
+        elif not leads and not source_message and source_status != "provider_error":
             source_message = (
                 "No usable records were returned by the selected source. "
                 "Check provider credentials, source coverage and query filters."
