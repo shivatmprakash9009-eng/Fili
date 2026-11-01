@@ -9,7 +9,7 @@ import {
   Plus, Rocket, Search, Settings2, ShieldCheck, Sparkles, Users, Workflow, X, Zap
 } from "lucide-react";
 import {
-  AnimatePresence, motion, useReducedMotion, useScroll, useTransform
+  AnimatePresence, motion, useReducedMotion
 } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { exportUrl, getApiStatus, isOutreachEligible, runCampaign, scanWebsite } from "@/lib/api";
@@ -58,55 +58,6 @@ function StatusPill({ state }: { state: ApiState }) {
       <span className="status-dot" />
       {label}
     </span>
-  );
-}
-
-function SignalArtwork() {
-  const reducedMotion = useReducedMotion();
-  return (
-    <div className="signal-art" aria-hidden="true">
-      <div className="signal-orbit orbit-one" />
-      <div className="signal-orbit orbit-two" />
-      <div className="signal-orbit orbit-three" />
-      <div className="signal-core"><span /><span /><span /></div>
-      <svg className="signal-lines" viewBox="0 0 560 320" fill="none">
-        <defs>
-          <linearGradient id="signal-stroke" x1="20" y1="40" x2="530" y2="290" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#8DBBFF" stopOpacity=".05" />
-            <stop offset=".48" stopColor="#2B72F0" stopOpacity=".9" />
-            <stop offset="1" stopColor="#70A9FF" stopOpacity=".08" />
-          </linearGradient>
-          <radialGradient id="signal-glow">
-            <stop stopColor="#3C83FF" stopOpacity=".28" />
-            <stop offset="1" stopColor="#3C83FF" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-        <circle cx="286" cy="160" r="146" fill="url(#signal-glow)" />
-        <motion.path
-          d="M36 220C96 220 92 132 156 132C212 132 199 228 263 228C325 228 310 92 374 92C432 92 426 172 524 172"
-          stroke="url(#signal-stroke)" strokeWidth="1.5" strokeDasharray="5 8"
-          initial={reducedMotion ? false : { pathLength: 0, opacity: 0 }}
-          animate={{ pathLength: 1, opacity: 1 }}
-          transition={{ duration: reducedMotion ? 0 : 1.8, ease: "easeOut" }}
-        />
-        <motion.path
-          d="M58 82C128 82 118 194 186 194C247 194 252 56 314 56C378 56 376 240 448 240"
-          stroke="#78A9FF" strokeWidth="1" strokeOpacity=".28" strokeDasharray="2 8"
-          initial={reducedMotion ? false : { pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: reducedMotion ? 0 : 2.2, delay: .2 }}
-        />
-        {[{x:156,y:132},{x:263,y:228},{x:374,y:92},{x:186,y:194},{x:314,y:56},{x:448,y:240}].map((p,i)=>(
-          <motion.circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#5B98FF"
-            initial={reducedMotion ? false : { scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: [0.45, 1, 0.45] }}
-            transition={{ delay: .35 + i*.12, duration: reducedMotion ? 0 : 2.8, repeat: reducedMotion ? 0 : Infinity }}
-          />
-        ))}
-      </svg>
-      <div className="art-label art-label-top"><span className="art-label-dot" /> DISCOVERY ENGINE</div>
-      <div className="art-label art-label-bottom">SIGNAL / 01 <span>FILI CORE</span></div>
-    </div>
   );
 }
 
@@ -446,9 +397,6 @@ function ProspectDrawer({ lead, scanning, onClose, onScan }: {
 
 function Dashboard() {
   const reducedMotion=useReducedMotion();
-  const {scrollY}=useScroll();
-  const artY=useTransform(scrollY,[0,560],[0,reducedMotion?0:88]);
-  const artOpacity=useTransform(scrollY,[0,420],[1,.38]);
   const [activeNav,setActiveNav]=useState<NavItem>("overview");
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
   const [campaignOpen,setCampaignOpen]=useState(false);
