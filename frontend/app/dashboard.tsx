@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import LocationSelector from "@/components/LocationSelector";
+import DeveloperPanel from "@/components/DeveloperPanel";
 import {
   Activity, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
   ChevronDown, ChevronRight, CircleAlert, Command, Download, ExternalLink,
@@ -721,6 +722,7 @@ function Dashboard() {
           <button type="button" className="button button-outline" onClick={refreshStatus}><Activity size={15}/> Recheck</button>
         </div>
               </div>
+              <DeveloperPanel />
               <section className="surface-card settings-card">
                 <div className="settings-heading"><div className="settings-symbol"><Zap size={19}/></div><div><h3>Fili prospecting engine</h3><p>Python API connection</p></div><StatusPill state={apiState}/></div>
                 <div className="settings-row"><span>API status</span><strong>{apiState==="connected"?"Connected":apiState==="checking"?"Checking":"Not connected"}</strong></div>
