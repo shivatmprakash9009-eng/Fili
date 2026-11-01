@@ -80,7 +80,8 @@ class TestMultiAgentSystem(unittest.IsolatedAsyncioTestCase):
         self.assertIn("company_name", leads[0])
         self.assertIn("contact_email", leads[0])
         self.assertTrue(leads[0]["outreach_enabled"])
-        self.assertGreaterEqual(leads[0]["relevance_score"], 1)
+        self.assertGreater(leads[0]["discovery_quality_score"], 0)
+        self.assertIsNone(leads[0]["relevance_score"])
 
     async def test_content_writer_variants(self):
         sample_lead = {
