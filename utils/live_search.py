@@ -343,7 +343,7 @@ async def fetch_duckduckgo_leads(
     seen: set[str] = set()
     for link, raw_title in results:
         title = _clean_company_name(raw_title).split(" - ")[0].split(" | ")[0].strip()
-        redirected = re.search(r"(?:\\?|&)uddg=([^&]+)", link)
+        redirected = re.search(r"(?:\?|&)uddg=([^&]+)", link)
         actual_url = unquote(redirected.group(1)) if redirected else html.unescape(link)
         actual_url = _website(actual_url)
         if not title or not actual_url:
