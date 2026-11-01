@@ -6,7 +6,8 @@ from utils.lead_quality import (
     match_selected_location,
     normalize_discovered_lead,
 )
-from utils.live_search import fetch_apollo_leads
+from agents.lead_researcher import LeadResearcherAgent
+from utils.live_search import ProviderRequestError, fetch_apollo_leads
 
 
 class LeadQualityTests(unittest.TestCase):
@@ -118,6 +119,34 @@ class ApolloConnectorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[0]["contact_email"], "")
         self.assertEqual(results[0]["phone"], "")
         self.assertFalse(results[0]["contact_verified"])
+
+
+class ProviderFailureTests(unittest.IsolatedAsyncioTestCase):
+    async def test_provider_failure_is_not_reported_as_zero_matches(self):
+        agent = LeadResearcherAgent()
+        scope = {
+            "city": "New York",
+            "state": "New York",
+            "state_code": "NY",
+            "country": "United States",
+            "country_code": "US",
+        }
+        with patch("agents.lead_researcher.get_apollo_key", return_value="test-key"), patch(
+            "agents.lead_researcher.fetch_apollo_leads",
+            new=AsyncMock(side_effect=ProviderRequestError(
+                "api.apollo.io", "provider_rate_limit_exceeded", 429
+            )),
+        ):
+            result = await agent.research_leads({
+                "target_industry": "SaaS",
+                "target_location": "New York, New York, United States",
+                "target_location_scope": scope,
+                "platform": "apollo",
+                "max_leads": 5,
+            })
+        self.assertEqual(result["source_status"], "provider_error")
+        self.assertEqual(result["diagnostics"]["provider_error"]["status_code"], 429)
+        self.assertEqual(result["leads"], [])
 
 
 if __name__ == "__main__":
