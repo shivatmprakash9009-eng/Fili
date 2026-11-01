@@ -71,8 +71,7 @@ export default function AuthScreen({ mode }: { mode: Mode }) {
         const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
         await updateProfile(credential.user, { displayName: `${firstName.trim()} ${lastName.trim()}` });
         await sendEmailVerification(credential.user);
-        setNotice("Account created. Verify your email to complete setup.");
-        router.push("/dashboard");
+        setNotice("Account created. Verify your email to complete setup. You can sign in after verification.");
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password);
         router.push("/dashboard");
