@@ -221,7 +221,7 @@ class LeadResearcherAgent(BaseAgent):
         lead = dict(payload.get("lead") or {})
         company = str(lead.get("company_name") or "Unknown business")
         website = str(lead.get("website") or "")
-        if not self.llm_client:
+        if self._llm_client is None:
             lead["research_status"] = "not_configured"
             lead["research_note"] = "Configure a research provider to enrich this business."
             return {"lead": lead}
