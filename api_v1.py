@@ -159,6 +159,16 @@ def _api_key_context(authorization: str | None) -> dict[str, Any]:
     if not rows:
         raise HTTPException(status_code=401, detail="Invalid or revoked Fili API key.")
     key = rows[0]
+    rate_limit = int(os.getenv("FILI_API_RATE_LIMIT_PER_MINUTE", str(DEFAULT_RATE_LIMIT)))
+    since = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    recent, _ = _supabase_request("GET", "fili_api_usage", params={
+        "select": "id",
+        "api_key_id": f"eq.{key['id']}",
+        "created_at": f"gte.{since}",
+        "limit": str(rate_limit + 1),
+    })
+    if len(recent or []) >= rate_limit:
+        raise HTTPException(status_code=429, detail="API rate limit exceeded. Retry in one minute.")
     key["key_prefix"] = raw_key[:17]
     return key
 
@@ -193,15 +203,19 @@ def _record_usage(key: dict[str, Any], route: str, status_code: int) -> None:
 def _save_prospects(owner_uid: str, leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
     records = []
     for lead in leads:
-        source_id = str(lead.get("source_id") or "")
         source_type = str(lead.get("source_type") or "unknown")
+        source_id = str(lead.get("source_id") or "")
+        if not source_id:
+            # Internal stable dedupe key; this is not represented as a provider-supplied ID.
+            identity = str(lead.get("source_url") or lead.get("website") or lead.get("company_name") or "")
+            source_id = "derived:" + hashlib.sha256(identity.casefold().encode("utf-8")).hexdigest()[:32]
         records.append({
             "owner_uid": owner_uid,
             "source_type": source_type,
             "source_id": source_id,
             "company_name": str(lead.get("company_name") or "")[:240],
             "website": str(lead.get("website") or "")[:2048],
-            "payload": lead,
+            "payload": {**lead, "internal_record_key": source_id},
         })
     if not records:
         return []
@@ -295,13 +309,16 @@ async def search_prospects(
     results = results[:body.limit]
     saved = _save_prospects(key["owner_uid"], results)
     by_identity = {
-        str(item.get("source_id") or item.get("website") or item.get("company_name") or "").casefold(): item
+        str((item.get("payload") or {}).get("internal_record_key") or item.get("source_id") or "").casefold(): item
         for item in saved
     }
     data = []
     for lead in results:
-        identity = str(lead.get("source_id") or lead.get("website") or lead.get("company_name") or "").casefold()
-        stored = by_identity.get(identity, {})
+        source_id = str(lead.get("source_id") or "")
+        if not source_id:
+            identity_value = str(lead.get("source_url") or lead.get("website") or lead.get("company_name") or "")
+            source_id = "derived:" + hashlib.sha256(identity_value.casefold().encode("utf-8")).hexdigest()[:32]
+        stored = by_identity.get(source_id.casefold(), {})
         data.append({"id": stored.get("id"), **lead})
     return {
         "data": data,
