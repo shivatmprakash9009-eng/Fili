@@ -25,6 +25,16 @@ RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 MAX_RETRIES = 3
 
 
+class ProviderRequestError(RuntimeError):
+    """Safe, machine-readable upstream provider failure."""
+
+    def __init__(self, provider: str, reason: str, status_code: int | None = None) -> None:
+        super().__init__(f"{provider}: {reason}")
+        self.provider = provider
+        self.reason = reason
+        self.status_code = status_code
+
+
 def get_apollo_key() -> str:
     return os.getenv("APOLLO_API_KEY", "").strip()
 
@@ -91,8 +101,20 @@ async def _request_json(
                 break
             if attempt + 1 < MAX_RETRIES:
                 await asyncio.sleep(min(8.0, (2 ** attempt) + random.random() * 0.25))
-    logger.warning("Provider request failed (%s %s): %s", method, url, last_error)
-    return {}
+    status_code = getattr(getattr(last_error, "response", None), "status_code", None)
+    host = urlsplit(url).hostname or "upstream"
+    if status_code in {401, 403}:
+        reason = "provider_authentication_or_permission_denied"
+    elif status_code == 429:
+        reason = "provider_rate_limit_exceeded"
+    elif status_code is not None and status_code >= 500:
+        reason = "provider_temporarily_unavailable"
+    elif isinstance(last_error, ValueError):
+        reason = "provider_returned_invalid_json"
+    else:
+        reason = "provider_network_or_timeout_error"
+    logger.warning("Provider request failed (%s %s): %s", method, host, reason)
+    raise ProviderRequestError(host, reason, status_code) from last_error
 
 
 async def fetch_apollo_leads(
