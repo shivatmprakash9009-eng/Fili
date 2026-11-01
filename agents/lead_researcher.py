@@ -1,47 +1,37 @@
-"""Lead Researcher Agent — finds and scores potential leads."""
+"""Evidence-first business discovery agent."""
 
 from __future__ import annotations
 
-import json
-import random
 from typing import Any
 
 from core.base_agent import BaseAgent
 from core.task import Task
+from utils.lead_quality import (
+    deduplicate_leads,
+    match_selected_location,
+    normalize_discovered_lead,
+)
 from utils.live_search import (
     fetch_apollo_leads,
-    fetch_serpapi_leads,
-    fetch_indiamart_leads,
     fetch_duckduckgo_leads,
+    fetch_indiamart_leads,
+    fetch_serpapi_leads,
     get_apollo_key,
     get_serpapi_key,
 )
 
 
 def _matches_selected_city(lead: dict[str, Any], scope: dict[str, Any] | None) -> bool:
-    """Require provider-supplied location evidence to match the selected city and state."""
-    if not scope:
-        return True
-    if not lead.get("location_verified"):
-        return False
-    location = str(lead.get("location") or "").casefold()
-    city = str(scope.get("city") or "").strip().casefold()
-    state = str(scope.get("state") or "").strip().casefold()
-    state_code = str(scope.get("state_code") or "").strip().casefold()
-    if not city or not (state or state_code):
-        return False
-    # Token-aware checks prevent e.g. York matching New York accidentally.
-    import re
-    def has_place(value: str) -> bool:
-        return bool(re.search(r"(?<![\w])" + re.escape(value) + r"(?![\w])", location))
-    return has_place(city) and (has_place(state) or (state_code and has_place(state_code)))
+    """Return true only when provider address evidence matches city and state."""
+    matched, _status = match_selected_location(str(lead.get("location") or ""), scope)
+    return matched
 
 
 class LeadResearcherAgent(BaseAgent):
-    """Researches target industries/niches and finds potential leads.
+    """Find businesses using live connectors; never manufacture prospect records.
 
-    Uses LLM to generate search queries, extract company info, and
-    score leads based on relevance.
+    AI may assist with later research and qualification, but generated names,
+    guessed contacts, and search snippets are not represented as real prospects.
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -51,303 +41,233 @@ class LeadResearcherAgent(BaseAgent):
         return ["research_leads", "enrich_lead", "score_lead"]
 
     async def process_task(self, task: Task) -> dict[str, Any]:
-        """Process a lead research task."""
         if task.task_type == "research_leads":
             return await self.research_leads(task.payload)
-        elif task.task_type == "enrich_lead":
+        if task.task_type == "enrich_lead":
             return await self.enrich_lead_data(task.payload)
-        elif task.task_type == "score_lead":
+        if task.task_type == "score_lead":
             return await self.score_lead(task.payload)
-        else:
-            raise ValueError(f"Unknown task type: {task.task_type}")
+        raise ValueError(f"Unknown task type: {task.task_type}")
 
     async def research_leads(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Research and find leads for a target industry.
-
-        Args:
-            payload: Must contain 'target_industry' and optionally
-                     'target_location', 'max_leads'.
-        """
-        target_industry = payload.get("target_industry", "SaaS")
-        target_location = payload.get("target_location", "USA")
+        target_industry = str(payload.get("target_industry") or "SaaS").strip()[:160]
+        target_location = str(payload.get("target_location") or "").strip()[:160]
         location_scope = payload.get("target_location_scope")
-        max_leads = payload.get("max_leads", 10)
-        platform = payload.get("platform", "apollo").lower()
+        platform = str(payload.get("platform") or "apollo").strip().casefold()
+        try:
+            max_leads = max(1, min(int(payload.get("max_leads", 10)), 100))
+        except (TypeError, ValueError):
+            max_leads = 10
 
-        platform_names = {
-            "apollo": "Apollo.io B2B Intelligence",
-            "indiamart": "IndiaMART B2B Marketplace",
-            "google_maps": "Google Maps Local Business",
-            "linkedin": "LinkedIn Sales Navigator",
-            "web_search": "Deep Web & Crunchbase",
-        }
-        platform_label = platform_names.get(platform, "Apollo.io B2B Intelligence")
+        if not target_industry:
+            raise ValueError("A target industry or business category is required.")
+        if location_scope is not None:
+            if not isinstance(location_scope, dict):
+                raise ValueError("Location scope must be an object.")
+            if not all(str(location_scope.get(field) or "").strip() for field in ("city", "state", "country")):
+                raise ValueError("Strict location targeting requires country, state and city.")
 
         self.logger.info(
-            f"Researching leads via [{platform_label}]: industry={target_industry}, "
-            f"location={target_location}, max={max_leads}"
+            "Discovery start provider=%s industry=%s location=%s limit=%s",
+            platform, target_industry, target_location, max_leads,
         )
 
-        platform_guidance = ""
-        if platform == "indiamart":
-            platform_guidance = """
-Focus specifically on Indian/global manufacturers, wholesale suppliers, exporters, and industrial trade businesses listed on IndiaMART.
-Include fields: 'business_type' (e.g. Manufacturer, Exporter, Wholesaler), 'verified_supplier' (true), 'phone': '+91...', 'main_products': ['item1', 'item2']."""
+        providers = {
+            "apollo": "Apollo.io",
+            "google_maps": "Google Maps via SerpAPI",
+            "indiamart": "IndiaMART",
+            "web_search": "Web search",
+            "linkedin": "LinkedIn",
+        }
+        if platform not in providers:
+            raise ValueError("Unsupported discovery source.")
+        provider_name = providers[platform]
+        raw_leads: list[dict[str, Any]] = []
+        source_status = "not_configured"
+        source_message = ""
+
+        if platform == "apollo":
+            if get_apollo_key():
+                raw_leads = await fetch_apollo_leads(
+                    industry=target_industry,
+                    location=target_location,
+                    max_leads=max_leads,
+                )
+                source_status = "results" if raw_leads else "no_results_or_provider_error"
+            else:
+                source_message = "Apollo API key is not configured."
         elif platform == "google_maps":
-            platform_guidance = """
-Focus on physical and regional businesses found on Google Maps.
-Include fields: 'rating' (e.g. '4.8 ★'), 'reviews_count' (e.g. 142), 'full_address', 'phone'."""
-        elif platform == "linkedin":
-            platform_guidance = """
-Focus on senior decision makers (Founder, CEO, VP, Director) discovered via LinkedIn Sales Navigator.
-Include fields: 'headline' (e.g. 'VP of Engineering @...'), 'growth_rate' (e.g. '+24% YoY')."""
-        elif platform == "apollo":
-            platform_guidance = """
-Focus on high-growth B2B companies with verified corporate email domains and direct intelligence via Apollo.io.
-Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce'], 'funding_stage': 'Series A/Bootstrapped'."""
-
-        leads: list[dict[str, Any]] = []
-        source_type = "live_connector_results"
-
-        # ── 1. Attempt Live Data Connectors First ─────────────────
-        if platform == "apollo" and get_apollo_key():
-            self.logger.info("Attempting live Apollo.io B2B intelligence lookup...")
-            leads = await fetch_apollo_leads(
-                industry=target_industry,
-                location=target_location,
-                max_leads=max_leads,
-            )
-        elif platform in ["serpapi", "google_maps"] and get_serpapi_key():
-            self.logger.info("Attempting live SerpAPI lookup...")
-            engine = "google_maps" if platform == "google_maps" else "google"
-            leads = await fetch_serpapi_leads(
-                query=target_industry,
-                location=target_location,
-                max_leads=max_leads,
-                engine=engine,
-            )
+            if get_serpapi_key():
+                raw_leads = await fetch_serpapi_leads(
+                    query=target_industry,
+                    location=target_location,
+                    max_leads=max_leads,
+                    engine="google_maps",
+                )
+                source_status = "results" if raw_leads else "no_results_or_provider_error"
+            else:
+                source_message = "SerpAPI key is not configured."
         elif platform == "indiamart":
-            leads = await fetch_indiamart_leads(
+            raw_leads = await fetch_indiamart_leads(
                 query=target_industry,
                 location=target_location,
                 max_leads=max_leads,
             )
+            source_status = "results" if raw_leads else "connector_disabled_or_no_results"
+            if not raw_leads:
+                source_message = (
+                    "IndiaMART HTML discovery is disabled by default. Use an approved provider "
+                    "integration or enable the connector only after reviewing its terms."
+                )
         elif platform == "web_search":
             if get_serpapi_key():
-                leads = await fetch_serpapi_leads(
+                raw_leads = await fetch_serpapi_leads(
                     query=target_industry,
                     location=target_location,
                     max_leads=max_leads,
                     engine="google",
                 )
+                source_status = "results" if raw_leads else "no_results_or_provider_error"
             else:
-                leads = await fetch_duckduckgo_leads(
+                raw_leads = await fetch_duckduckgo_leads(
                     query=target_industry,
                     location=target_location,
                     max_leads=max_leads,
                 )
+                source_status = "search_hints" if raw_leads else "no_results"
+        else:
+            # There is no dedicated LinkedIn connector in this repository.
+            source_status = "unsupported_connector"
+            source_message = (
+                "A dedicated LinkedIn API integration is not configured. "
+                "Fili will not label generic web or AI results as LinkedIn data."
+            )
 
-        # Enforce the selected city against provider-supplied address evidence.
+        normalized: list[dict[str, Any]] = []
+        for raw in raw_leads:
+            if not isinstance(raw, dict):
+                continue
+            lead = normalize_discovered_lead(
+                raw,
+                provider=provider_name,
+                target_industry=target_industry,
+                location_scope=location_scope,
+            )
+            if lead.get("company_name"):
+                normalized.append(lead)
+
+        before_deduplication = len(normalized)
+        unique = deduplicate_leads(normalized)
+        duplicate_count = before_deduplication - len(unique)
+
+        location_rejected = 0
         if location_scope:
-            leads = [lead for lead in leads if _matches_selected_city(lead, location_scope)]
+            accepted: list[dict[str, Any]] = []
+            for lead in unique:
+                if lead.get("location_verified"):
+                    accepted.append(lead)
+                else:
+                    location_rejected += 1
+            unique = accepted
 
-        # Never fabricate city-targeted leads when no provider-verified city match exists.
+        unique.sort(
+            key=lambda item: (
+                item.get("discovery_quality_score", 0),
+                bool(item.get("website")),
+                bool(item.get("source_id")),
+            ),
+            reverse=True,
+        )
+        leads = unique[:max_leads]
+
         if location_scope and not leads:
-            self.logger.info("No provider-verified leads matched the selected city and state.")
-            return {
-                "leads": [], "total": 0, "location_filter_applied": True,
-                "message": "No provider-verified results matched this city. Try another source or city.",
-            }
-
-        # ── 2. Fallback to LLM or Mock Generation if no live leads ──
-        if not leads:
-            source_type = "ai_generated_unverified"
-            prompt = f"""You are a lead research assistant. Do not claim to access {platform_label} unless a live connector returned results.
-Generate only illustrative examples if live search is unavailable. Never invent or imply verified people, emails, phone numbers, customer relationships, funding, or company facts.
-If a field cannot be grounded in the supplied context, return an empty string or empty list. Mark all generated records as illustrative examples, not real prospects.
-Prepare up to {max_leads} illustrative records for the {target_industry} domain in {target_location}.
-{platform_guidance}
-
-For each lead, return a JSON array of objects:
-[
-  {{
-    "company_name": "Company Name",
-    "website": "https://example.com",
-    "industry": "{target_industry}",
-    "sub_industry": "niche",
-    "company_size": "small/medium/large",
-    "location": "{target_location}",
-    "contact_name": "Decision Maker Full Name",
-    "contact_title": "CEO / Founder / Director",
-    "contact_email": "name@company.com",
-    "phone": "+1-555-0199 or local phone",
-    "pain_points": ["specific problem 1", "specific problem 2"],
-    "platform": "{platform_label}",
-    "key_details": "Brief 1-sentence value hook or note"
-  }}
-]
-
-Return ONLY the JSON array, no extra markdown commentary."""
-
-            try:
-                response = await self.call_llm(
-                    prompt=prompt,
-                    system_prompt="You are a professional B2B lead generation researcher. Return only valid JSON array.",
-                    temperature=0.8,
+            source_status = "no_verified_city_matches"
+            if not source_message:
+                source_message = (
+                    "No provider result contained address evidence matching the selected city and state. "
+                    "Fili did not substitute nearby or synthetic records."
                 )
-                leads = self._parse_leads(response)
-            except RuntimeError:
-                # LLM unavailable — deterministic fixtures are explicitly marked as synthetic.
-                self.logger.info("LLM not available, generating synthetic preview records")
-                leads = self._generate_mock_leads(target_industry, target_location, max_leads)
-                source_type = "mock_data"
+        elif not leads and not source_message:
+            source_message = (
+                "No usable records were returned by the selected source. "
+                "Check provider credentials, source coverage and query filters."
+            )
 
-        # Source provenance is explicit. AI/mock records are never outreach eligible.
-        for lead in leads:
-            lead["platform"] = lead.get("platform") or platform_label
-            lead["source_type"] = lead.get("source_type") or source_type
-            lead["is_synthetic"] = lead["source_type"] in {"ai_generated_unverified", "mock_data"}
-            lead["contact_verified"] = bool(lead.get("contact_verified", False)) and not lead["is_synthetic"]
-            lead["outreach_enabled"] = not lead["is_synthetic"]
-            lead["relevance_score"] = self._calculate_score(lead, target_industry)
+        diagnostics = {
+            "provider": provider_name,
+            "raw_results": len(raw_leads),
+            "normalized_results": before_deduplication,
+            "duplicates_removed": duplicate_count,
+            "rejected_by_location": location_rejected,
+            "returned_results": len(leads),
+            "strict_city_filter": bool(location_scope),
+            "location_verified_results": sum(1 for lead in leads if lead.get("location_verified")),
+            "contact_verified_results": sum(1 for lead in leads if lead.get("contact_verified")),
+        }
 
-        # Sort by score descending
-        leads.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
-
-        self.logger.info(f"Found {len(leads)} leads")
-        return {"leads": leads, "total": len(leads)}
+        self.logger.info("Discovery complete: %s", diagnostics)
+        return {
+            "leads": leads,
+            "total": len(leads),
+            "provider": provider_name,
+            "source_status": source_status,
+            "message": source_message,
+            "diagnostics": diagnostics,
+            "location_filter_applied": bool(location_scope),
+        }
 
     async def enrich_lead_data(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Enrich a lead with additional data using LLM."""
-        lead = payload.get("lead", {})
-        company = lead.get("company_name", "Unknown")
+        """Generate clearly labelled research hypotheses, not unverified facts."""
+        lead = dict(payload.get("lead") or {})
+        company = str(lead.get("company_name") or "Unknown business")
+        website = str(lead.get("website") or "")
+        if not self.llm_client:
+            lead["research_status"] = "not_configured"
+            lead["research_note"] = "Configure a research provider to enrich this business."
+            return {"lead": lead}
+
+        prompt = f"""Analyze only the business information supplied below.
+Do not invent news, funding, revenue, employees, customers, contacts, or technologies.
+When evidence is absent, return an empty value and explicitly say it is unknown.
+Return JSON with keys: observed_facts, unknowns, research_hypotheses.
+Each observed fact must cite the supplied field it relies on.
+
+Business name: {company}
+Website: {website or "not supplied"}
+Location: {lead.get("location") or "not supplied"}
+Industry query: {lead.get("industry") or "not supplied"}
+Source: {lead.get("platform") or "not supplied"}"""
 
         try:
-            prompt = f"""Provide additional business intelligence for the company "{company}":
-- Recent news or developments
-- Key competitors
-- Potential business needs
-- Best approach for outreach
-
-Return as JSON with keys: recent_news, competitors, business_needs, outreach_approach"""
-
-            response = await self.call_llm(prompt=prompt, temperature=0.7)
-            enrichment = self._parse_json_safe(response)
-        except (RuntimeError, Exception):
-            enrichment = {
-                "recent_news": "Data not available — configure LLM API key",
-                "competitors": [],
-                "business_needs": ["Automation", "Efficiency"],
-                "outreach_approach": "Email outreach with personalized value proposition",
-            }
-
-        lead.update(enrichment)
+            response = await self.call_llm(prompt=prompt, temperature=0.1)
+            parsed = self._parse_json_safe(response)
+            lead["research_enrichment"] = parsed
+            lead["research_status"] = "ai_assisted_unverified"
+        except Exception as exc:
+            self.logger.warning("Lead research enrichment unavailable: %s", exc)
+            lead["research_status"] = "unavailable"
         return {"lead": lead}
 
     async def score_lead(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Score a single lead."""
-        lead = payload.get("lead", {})
-        industry = payload.get("target_industry", "")
-        score = self._calculate_score(lead, industry)
-        return {"lead": lead, "score": score}
-
-    # ── Private Helpers ───────────────────────────────────────────
-
-    def _calculate_score(self, lead: dict[str, Any], target_industry: str) -> int:
-        """Calculate relevance score (1-10) for a lead."""
-        score = 5  # Base score
-
-        # Industry match
-        if lead.get("industry", "").lower() == target_industry.lower():
-            score += 2
-
-        # Company size preference (medium companies often convert better)
-        size = lead.get("company_size", "").lower()
-        if size == "medium":
-            score += 1
-        elif size == "large":
-            score += 0
-
-        # Has contact email
-        if lead.get("contact_email"):
-            score += 1
-
-        # Has pain points identified
-        if lead.get("pain_points") and len(lead["pain_points"]) > 0:
-            score += 1
-
-        return min(score, 10)
-
-    def _parse_leads(self, response: str) -> list[dict[str, Any]]:
-        """Parse LLM response to extract leads."""
-        try:
-            # Try to find JSON array in response
-            text = response.strip()
-            start = text.find("[")
-            end = text.rfind("]") + 1
-            if start != -1 and end > start:
-                return json.loads(text[start:end])
-        except (json.JSONDecodeError, ValueError):
-            self.logger.warning("Failed to parse LLM leads response")
-        return []
+        lead = dict(payload.get("lead") or {})
+        score = int(lead.get("discovery_quality_score") or 0)
+        return {
+            "lead": lead,
+            "score": score,
+            "score_type": "evidence_completeness_0_to_100",
+            "quality_signals": lead.get("quality_signals", []),
+        }
 
     def _parse_json_safe(self, text: str) -> dict[str, Any]:
-        """Safely parse JSON from text."""
+        import json
+
         try:
             clean = text.strip()
             start = clean.find("{")
             end = clean.rfind("}") + 1
             if start != -1 and end > start:
-                return json.loads(clean[start:end])
+                parsed = json.loads(clean[start:end])
+                return parsed if isinstance(parsed, dict) else {}
         except (json.JSONDecodeError, ValueError):
             pass
         return {}
-
-    def _generate_mock_leads(
-        self, industry: str, location: str, count: int
-    ) -> list[dict[str, Any]]:
-        """Generate mock lead data for testing."""
-        mock_companies = [
-            ("TechFlow Solutions", "techflow.io", "CTO", "Alex Johnson"),
-            ("DataStream Inc", "datastream.com", "VP Engineering", "Sarah Chen"),
-            ("CloudNine Software", "cloudnine.io", "Head of Product", "Mike Peters"),
-            ("ScaleUp AI", "scaleupai.com", "CEO", "Priya Sharma"),
-            ("NextGen Analytics", "nextgenanalytics.com", "CTO", "David Wilson"),
-            ("AutomateIQ", "automateiq.io", "VP Operations", "Lisa Rodriguez"),
-            ("SmartStack Labs", "smartstack.dev", "Engineering Lead", "Tom Baker"),
-            ("GrowthEngine", "growthengine.co", "CMO", "Emma Davis"),
-            ("PipelineHQ", "pipelinehq.com", "Head of Sales", "James Lee"),
-            ("InnovateTech", "innovatetech.io", "CTO", "Rachel Kim"),
-        ]
-
-        leads = []
-        for i in range(min(count, len(mock_companies))):
-            name, domain, title, contact = mock_companies[i]
-            leads.append({
-                "company_name": name,
-                "website": f"https://{domain}",
-                "industry": industry,
-                "sub_industry": f"{industry} Solutions",
-                "company_size": random.choice(["small", "medium", "large"]),
-                "estimated_employees": random.randint(20, 500),
-                "location": f"{random.choice(['New York', 'San Francisco', 'Austin', 'Chicago', 'Seattle'])}, {location}",
-                "contact_name": contact,
-                "contact_title": title,
-                "contact_email": f"{contact.split()[0].lower()}@{domain}",
-                "pain_points": random.sample(
-                    ["manual processes", "scaling issues", "data silos",
-                     "slow deployment", "customer churn", "high CAC",
-                     "poor analytics", "talent shortage"],
-                    k=random.randint(2, 4),
-                ),
-                "technologies_used": random.sample(
-                    ["AWS", "Python", "React", "Docker", "Kubernetes",
-                     "PostgreSQL", "Redis", "Terraform"],
-                    k=random.randint(2, 4),
-                ),
-                "annual_revenue_estimate": random.choice(
-                    ["$1M-$5M", "$5M-$10M", "$10M-$50M", "$50M-$100M"]
-                ),
-            })
-
-        return leads
