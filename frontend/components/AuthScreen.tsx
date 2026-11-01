@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import {
-  Github, ArrowLeft, ArrowRight, Eye, EyeOff, LoaderCircle,
+  GitBranch, ArrowLeft, ArrowRight, Eye, EyeOff, LoaderCircle,
   LockKeyhole, Mail, ShieldCheck, Sparkles, CheckCircle2
 } from "lucide-react";
 import {
@@ -124,7 +124,7 @@ export default function AuthScreen({ mode }: { mode: Mode }) {
 
           {mode !== "forgot" && <div className="auth-socials">
             <button type="button" onClick={() => handleSocial("google")} disabled={busy}><span className="google-g">G</span> Continue with Google</button>
-            <button type="button" onClick={() => handleSocial("github")} disabled={busy}><Github size={17}/> GitHub</button>
+            <button type="button" onClick={() => handleSocial("github")} disabled={busy}><GitBranch size={17}/> GitHub</button>
           </div>}
           {mode !== "forgot" && <div className="auth-divider"><span/> <small>OR CONTINUE WITH EMAIL</small> <span/></div>}
 
