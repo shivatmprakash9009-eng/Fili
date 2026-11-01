@@ -48,20 +48,6 @@ export default function DeveloperPanel() {
   const [notice, setNotice] = useState("");
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    let unsubscribe = () => {};
-    try {
-      unsubscribe = onAuthStateChanged(getFirebaseAuth(), (nextUser) => {
-        setUser(nextUser);
-        setAuthReady(true);
-      });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Firebase authentication is unavailable.");
-      setAuthReady(true);
-    }
-    return () => unsubscribe();
-  }, []);
-
   const loadData = useCallback(async (activeUser: User) => {
     setLoading(true);
     setError("");
@@ -81,8 +67,30 @@ export default function DeveloperPanel() {
   }, []);
 
   useEffect(() => {
-    if (user) void loadData(user);
-  }, [user, loadData]);
+    let unsubscribe = () => {};
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      try {
+        unsubscribe = onAuthStateChanged(getFirebaseAuth(), (nextUser) => {
+          setUser(nextUser);
+          setAuthReady(true);
+          if (nextUser) void loadData(nextUser);
+          else {
+            setKeys([]);
+            setUsage(null);
+          }
+        });
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Firebase authentication is unavailable.");
+        setAuthReady(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [loadData]);
 
   const activeKeys = useMemo(() => keys.filter((item) => !item.revoked_at), [keys]);
 
