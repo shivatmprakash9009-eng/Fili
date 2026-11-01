@@ -264,7 +264,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <span class="text-[10px] font-mono text-white bg-[#1a1a1a] px-1.5 py-0.5 rounded">B2B SaaS</span>
           </div>
           <div class="font-semibold text-sm text-white mt-1">Apollo.io</div>
-          <div class="text-[11px] text-[#737373] mt-0.5">Verified Decision Makers</div>
+          <div class="text-[11px] text-[#737373] mt-0.5">Company records · contacts require enrichment</div>
         </div>
 
         <div class="card-mono p-3.5 rounded-lg transition">
@@ -282,7 +282,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <span class="text-[10px] font-mono text-white bg-[#1a1a1a] px-1.5 py-0.5 rounded">Trade</span>
           </div>
           <div class="font-semibold text-sm text-white mt-1">IndiaMART</div>
-          <div class="text-[11px] text-[#737373] mt-0.5">Manufacturers & Exporters</div>
+          <div class="text-[11px] text-[#737373] mt-0.5">Optional HTML connector · disabled by default</div>
         </div>
 
         <div class="card-mono p-3.5 rounded-lg transition">
@@ -290,8 +290,8 @@ HTML_PAGE = """<!DOCTYPE html>
             <span class="text-xs font-mono text-[#888888]">PLATFORM 04</span>
             <span class="text-[10px] font-mono text-white bg-[#1a1a1a] px-1.5 py-0.5 rounded">Executive</span>
           </div>
-          <div class="font-semibold text-sm text-white mt-1">LinkedIn Sales</div>
-          <div class="text-[11px] text-[#737373] mt-0.5">C-Suite & Founders</div>
+          <div class="font-semibold text-sm text-white mt-1">LinkedIn</div>
+          <div class="text-[11px] text-[#737373] mt-0.5">Dedicated connector not configured</div>
         </div>
 
         <div class="card-mono p-3.5 rounded-lg transition">
@@ -300,7 +300,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <span class="text-[10px] font-mono text-white bg-[#1a1a1a] px-1.5 py-0.5 rounded">Startups</span>
           </div>
           <div class="font-semibold text-sm text-white mt-1">Deep Web</div>
-          <div class="text-[11px] text-[#737373] mt-0.5">Crunchbase & Fast Growth</div>
+          <div class="text-[11px] text-[#737373] mt-0.5">Web search hints · not verified records</div>
         </div>
       </div>
     </section>
@@ -320,11 +320,11 @@ HTML_PAGE = """<!DOCTYPE html>
           <div>
             <label class="block text-xs font-mono text-[#888888] mb-1">DATA PLATFORM SOURCE</label>
             <select id="platformSelect" class="w-full rounded px-3 py-2 text-sm">
-              <option value="apollo">Apollo.io (Verified B2B & C-Suite)</option>
+              <option value="apollo">Apollo.io (Company Discovery)</option>
               <option value="google_maps">Google Maps (Local Businesses & Retail)</option>
-              <option value="indiamart">IndiaMART (Wholesale, Suppliers & Exporters)</option>
-              <option value="linkedin">LinkedIn Sales Navigator (Executive Profiles)</option>
-              <option value="web_search">Deep Web & Crunchbase (Funded Startups)</option>
+              <option value="indiamart">IndiaMART (Optional connector · disabled by default)</option>
+              <option value="linkedin" disabled>LinkedIn (Dedicated connector not configured)</option>
+              <option value="web_search">Web Search (Unverified discovery hints)</option>
             </select>
           </div>
 
