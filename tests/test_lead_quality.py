@@ -34,6 +34,17 @@ class LeadQualityTests(unittest.TestCase):
         address = "New York, California, United States"
         self.assertFalse(match_selected_location(address, self.scope)[0])
 
+
+    def test_explicit_wrong_country_is_rejected(self):
+        address = "Austin, Texas, USA"
+        self.assertFalse(match_selected_location(address, {
+            "city": "Austin",
+            "state": "Texas",
+            "state_code": "TX",
+            "country": "India",
+            "country_code": "IN",
+        })[0])
+
     def test_missing_location_is_not_verified(self):
         self.assertEqual(
             match_selected_location("", self.scope)[1],
