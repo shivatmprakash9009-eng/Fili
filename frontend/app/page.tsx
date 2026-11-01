@@ -39,11 +39,11 @@ export default function Home() {
           <a href="#approach" onClick={closeMenu}>How it works</a>
           <a href="#principles" onClick={closeMenu}>Our approach</a>
           <a href="#faq" onClick={closeMenu}>FAQ</a>
-          <Link className="mobile-nav-cta" href="/dashboard" onClick={closeMenu}>Open workspace <ArrowRight size={15}/></Link>
+          <Link className="mobile-nav-cta" href="/login" onClick={closeMenu}>Open workspace <ArrowRight size={15}/></Link>
         </nav>
         <div className="marketing-nav-actions">
-          <Link href="/dashboard" className="nav-login">Sign in</Link>
-          <Link href="/dashboard" className="marketing-nav-cta">Open workspace <ArrowUpRight size={14}/></Link>
+          <Link href="/login" className="nav-login">Sign in</Link>
+          <Link href="/login" className="marketing-nav-cta">Open workspace <ArrowUpRight size={14}/></Link>
           <button className="marketing-menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Close menu" : "Open menu"}>{menuOpen ? <X size={21}/> : <Menu size={21}/>}</button>
         </div>
       </header>
@@ -54,7 +54,7 @@ export default function Home() {
           <h1>Less noise.<br/><span>Better prospects.</span></h1>
           <p className="hero-description">Fili brings business discovery, company research and prospect qualification into one focused workspace — with evidence behind the details.</p>
           <div className="hero-actions">
-            <Link href="/dashboard" className="primary-cta">Explore the workspace <ArrowRight size={17}/></Link>
+            <Link href="/login" className="primary-cta">Explore the workspace <ArrowRight size={17}/></Link>
             <a href="#approach" className="secondary-cta">See how it works <span><ArrowDownIcon/></span></a>
           </div>
           <div className="hero-proof"><span className="proof-icon"><ShieldCheck size={15}/></span><span>Evidence-led by design</span><i/> <span>No guessed contacts or fabricated details</span></div>
@@ -116,7 +116,7 @@ export default function Home() {
       </section>
 
       <section className="trust-section">
-        <div className="trust-copy"><div className="eyebrow"><span className="eyebrow-line"/> TRUST IS A PRODUCT FEATURE</div><h2>Never confuse<br/><em>more data</em> with<br/>better intelligence.</h2><p>Fili is designed to make the quality of information visible. Sources, location match and missing fields should be easy to inspect — not hidden behind a confident-looking score.</p><Link href="/dashboard" className="text-link">See the workspace <ArrowRight size={15}/></Link></div>
+        <div className="trust-copy"><div className="eyebrow"><span className="eyebrow-line"/> TRUST IS A PRODUCT FEATURE</div><h2>Never confuse<br/><em>more data</em> with<br/>better intelligence.</h2><p>Fili is designed to make the quality of information visible. Sources, location match and missing fields should be easy to inspect — not hidden behind a confident-looking score.</p><Link href="/login" className="text-link">See the workspace <ArrowRight size={15}/></Link></div>
         <div className="trust-visual">
           <div className="trust-card"><div className="trust-card-header"><span>RECORD INTEGRITY</span><span className="trust-status"><i/> TRANSPARENT</span></div><div className="trust-field"><span>Company name</span><strong><Check size={14}/> Source available</strong></div><div className="trust-field"><span>Business location</span><strong><Check size={14}/> Match inspected</strong></div><div className="trust-field"><span>Contact details</span><strong className="not-available">Not provided</strong></div><div className="trust-field"><span>Source provenance</span><strong><Check size={14}/> View source</strong></div><div className="trust-card-note"><ShieldCheck size={15}/> Missing data stays visible. No generated identities.</div></div>
           <div className="trust-decoration">F / 01</div>
@@ -125,12 +125,12 @@ export default function Home() {
 
       <section className="closing-cta">
         <div className="closing-cta-image"><Image src="https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1800&q=85" alt="Light-filled contemporary office" fill unoptimized sizes="100vw"/></div>
-        <div className="closing-cta-content"><div className="eyebrow"><span className="eyebrow-line"/> START WITH CLARITY</div><h2>Make every prospect<br/>worth a closer look.</h2><p>Bring your discovery and research workflow into one place.</p><Link href="/dashboard" className="primary-cta">Open Fili workspace <ArrowRight size={17}/></Link></div>
+        <div className="closing-cta-content"><div className="eyebrow"><span className="eyebrow-line"/> START WITH CLARITY</div><h2>Make every prospect<br/>worth a closer look.</h2><p>Bring your discovery and research workflow into one place.</p><Link href="/login" className="primary-cta">Open Fili workspace <ArrowRight size={17}/></Link></div>
       </section>
 
       <section className="faq-section" id="faq"><div><div className="eyebrow"><span className="eyebrow-line"/> QUESTIONS</div><h2>Clarity, before<br/><em>you get started.</em></h2></div><div className="faq-list"><details><summary>What is Fili? <ChevronDown size={16}/></summary><p>Fili is a prospecting workspace for discovering businesses, researching company context, reviewing evidence and organizing outreach.</p></details><details><summary>Does Fili invent contact information? <ChevronDown size={16}/></summary><p>No. The product is designed to avoid guessed identities and generated contact details. Missing or unsupported information should remain clearly marked.</p></details><details><summary>Can I search by a specific location? <ChevronDown size={16}/></summary><p>Yes. The discovery workflow supports hierarchical country, state and city targeting where the selected data provider can verify location evidence.</p></details><details><summary>Does Fili send outreach automatically? <ChevronDown size={16}/></summary><p>Outreach is currently draft-oriented. Review prospect sources and details before contacting anyone.</p></details></div></section>
 
-      <footer className="marketing-footer"><Link href="/" className="marketing-brand"><span className="marketing-brand-mark">f</span><span>fili</span><small>PROSPECTING OS</small></Link><span>Evidence-led prospecting.</span><div><a href="#platform">Platform</a><a href="#approach">How it works</a><Link href="/dashboard">Workspace <ArrowUpRight size={12}/></Link></div><small>© {new Date().getFullYear()} Fili. All rights reserved.</small></footer>
+      <footer className="marketing-footer"><Link href="/" className="marketing-brand"><span className="marketing-brand-mark">f</span><span>fili</span><small>PROSPECTING OS</small></Link><span>Evidence-led prospecting.</span><div><a href="#platform">Platform</a><a href="#approach">How it works</a><Link href="/login">Workspace <ArrowUpRight size={12}/></Link></div><small>© {new Date().getFullYear()} Fili. All rights reserved.</small></footer>
     </main>
   );
 }
