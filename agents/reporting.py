@@ -139,16 +139,29 @@ class ReportingAgent(BaseAgent):
         return []
 
     def _analyze_lead_quality(self, leads: list[dict[str, Any]]) -> dict[str, Any]:
-        """Analyze lead quality distribution."""
+        """Report evidence completeness without pretending it is sales relevance."""
         if not leads:
-            return {"average_score": 0, "high_quality": 0, "medium_quality": 0, "low_quality": 0}
+            return {
+                "average_score": 0,
+                "score_scale": "0_to_100",
+                "scoring_basis": "provider evidence completeness",
+                "high_quality": 0,
+                "medium_quality": 0,
+                "low_quality": 0,
+                "total": 0,
+            }
 
-        scores = [lead.get("relevance_score", 5) for lead in leads]
+        scores = [
+            max(0, min(100, float(lead.get("discovery_quality_score") or 0)))
+            for lead in leads
+        ]
         return {
             "average_score": round(sum(scores) / len(scores), 1) if scores else 0,
-            "high_quality": sum(1 for s in scores if s >= 8),
-            "medium_quality": sum(1 for s in scores if 5 <= s < 8),
-            "low_quality": sum(1 for s in scores if s < 5),
+            "score_scale": "0_to_100",
+            "scoring_basis": "provider evidence completeness",
+            "high_quality": sum(1 for score in scores if score >= 80),
+            "medium_quality": sum(1 for score in scores if 50 <= score < 80),
+            "low_quality": sum(1 for score in scores if score < 50),
             "total": len(scores),
         }
 
@@ -212,7 +225,7 @@ class ReportingAgent(BaseAgent):
 
         lq = report.get("lead_quality", {})
         lines += [
-            f"    Average Score: {lq.get('average_score', 'N/A')}/10",
+            f"    Average Evidence Score: {lq.get('average_score', 'N/A')}/100",
             f"    High Quality:  {lq.get('high_quality', 0)}",
             f"    Medium:        {lq.get('medium_quality', 0)}",
             f"    Low:           {lq.get('low_quality', 0)}",
