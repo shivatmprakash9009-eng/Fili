@@ -39,6 +39,7 @@ from agents.content_writer import ContentWriterAgent
 from agents.email_outreach import EmailOutreachAgent
 from agents.response_analyzer import ResponseAnalyzerAgent
 from agents.reporting import ReportingAgent
+from utils.database import DatabaseManager
 from utils.prospecting import (
     csv_export, enrich_lead, excel_export, fetch_tech_stack, validate_public_http_url,
 )
@@ -154,6 +155,20 @@ async def execute_campaign(
         STATE["latest_report"] = report_res.data if report_res else {}
         STATE["last_campaign_name"] = campaign_name
         email_activity = email_res.data if email_res else {"sent": 0, "dry_run": True}
+
+        # Persist to SQLite Database
+        try:
+            db = DatabaseManager()
+            db.save_campaign_results(
+                campaign_name=campaign_name,
+                target_industry=target,
+                target_location=location,
+                platform=platform,
+                leads=leads,
+                content_list=content_items,
+            )
+        except Exception as db_exc:
+            logging.getLogger("dashboard").error(f"Failed to persist campaign to DB: {db_exc}")
         return {
             "success": True, "leads": leads, "content": content_items,
             "report": STATE["latest_report"], "email_activity": email_activity,
@@ -321,6 +336,9 @@ HTML_PAGE = """<!DOCTYPE html>
             <label class="block text-xs font-mono text-[#888888] mb-1">DATA PLATFORM SOURCE</label>
             <select id="platformSelect" class="w-full rounded px-3 py-2 text-sm">
               <option value="apollo">Apollo.io (Company Discovery)</option>
+              <option value="domain_scraper">Deep Website Domain Extractor (Zero-API)</option>
+              <option value="github">GitHub Open Source Tech (Zero-API)</option>
+              <option value="hacker_news">Hacker News Startup Launches (Zero-API)</option>
               <option value="google_maps">Google Maps (Local Businesses & Retail)</option>
               <option value="indiamart">IndiaMART (Optional connector · disabled by default)</option>
               <option value="linkedin" disabled>LinkedIn (Dedicated connector not configured)</option>

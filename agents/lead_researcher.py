@@ -16,10 +16,13 @@ from utils.live_search import (
     fetch_duckduckgo_leads,
     fetch_indiamart_leads,
     fetch_serpapi_leads,
+    fetch_github_tech_leads,
+    fetch_hacker_news_leads,
     get_apollo_key,
     get_serpapi_key,
     ProviderRequestError,
 )
+from utils.domain_scraper import scrape_domain_leads
 
 
 def _matches_selected_city(lead: dict[str, Any], scope: dict[str, Any] | None) -> bool:
@@ -73,23 +76,70 @@ class LeadResearcherAgent(BaseAgent):
             platform, target_industry, target_location, max_leads,
         )
 
+        platform_names = {
+            "apollo": "Apollo.io B2B Intelligence",
+            "indiamart": "IndiaMART B2B Marketplace",
+            "google_maps": "Google Maps Local Business",
+            "linkedin": "LinkedIn Sales Navigator",
+            "web_search": "Deep Web & Crunchbase",
+            "github": "GitHub Open Source Ecosystem (Zero-API)",
+            "hacker_news": "Hacker News Startup Launches (Zero-API)",
+            "domain_scraper": "Deep Website Domain Extractor (Zero-API)",
+        }
+        platform_label = platform_names.get(platform, "Apollo.io B2B Intelligence")
+
+        platform_guidance = ""
+        if platform == "indiamart":
+            platform_guidance = """
+Focus specifically on Indian/global manufacturers, wholesale suppliers, exporters, and industrial trade businesses listed on IndiaMART.
+Include fields: 'business_type' (e.g. Manufacturer, Exporter, Wholesaler), 'verified_supplier' (true), 'phone': '+91...', 'main_products': ['item1', 'item2']."""
+        elif platform == "google_maps":
+            platform_guidance = """
+Focus on physical and regional businesses found on Google Maps.
+Include fields: 'rating' (e.g. '4.8 ★'), 'reviews_count' (e.g. 142), 'full_address', 'phone'."""
+        elif platform == "linkedin":
+            platform_guidance = """
+Focus on senior decision makers (Founder, CEO, VP, Director) discovered via LinkedIn Sales Navigator.
+Include fields: 'headline' (e.g. 'VP of Engineering @...'), 'growth_rate' (e.g. '+24% YoY')."""
+        elif platform == "github":
+            platform_guidance = """
+Focus on high-growth tech startups and open-source creators from GitHub.
+Include fields: 'github_repo', 'technologies_used', 'maintainer_contact'."""
+        elif platform == "hacker_news":
+            platform_guidance = """
+Focus on recently launched startups from Hacker News Show HN.
+Include fields: 'launch_date', 'founder_name', 'initial_traction'."""
+        elif platform == "domain_scraper":
+            platform_guidance = """
+Focus on direct extraction from target website domain, extracting exact emails, phone numbers, and team contacts.
+Include fields: 'all_extracted_emails', 'all_extracted_phones', 'social_links'."""
+        elif platform == "apollo":
+            platform_guidance = """
+Focus on high-growth B2B companies with verified corporate email domains and direct intelligence via Apollo.io.
+Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce'], 'funding_stage': 'Series A/Bootstrapped'."""
+
         providers = {
             "apollo": "Apollo.io",
             "google_maps": "Google Maps via SerpAPI",
             "indiamart": "IndiaMART",
             "web_search": "Web search",
             "linkedin": "LinkedIn",
+            "github": "GitHub Open Source Ecosystem",
+            "hacker_news": "Hacker News Startup Launches",
+            "domain_scraper": "Deep Website Domain Extractor",
         }
-        if platform not in providers:
+        if platform not in providers and not ("." in target_industry and not " " in target_industry):
             raise ValueError("Unsupported discovery source.")
-        provider_name = providers[platform]
+        
+        effective_platform = "domain_scraper" if ("." in target_industry and not " " in target_industry) else platform
+        provider_name = providers.get(effective_platform, "Deep Website Domain Extractor")
         raw_leads: list[dict[str, Any]] = []
         source_status = "not_configured"
         source_message = ""
 
         provider_error: dict[str, Any] | None = None
         try:
-            if platform == "apollo":
+            if effective_platform == "apollo":
                 if get_apollo_key():
                     raw_leads = await fetch_apollo_leads(
                         industry=target_industry,
@@ -99,7 +149,7 @@ class LeadResearcherAgent(BaseAgent):
                     source_status = "results" if raw_leads else "no_results"
                 else:
                     source_message = "Apollo API key is not configured."
-            elif platform == "google_maps":
+            elif effective_platform == "google_maps":
                 if get_serpapi_key():
                     raw_leads = await fetch_serpapi_leads(
                         query=target_industry,
@@ -110,7 +160,28 @@ class LeadResearcherAgent(BaseAgent):
                     source_status = "results" if raw_leads else "no_results"
                 else:
                     source_message = "SerpAPI key is not configured."
-            elif platform == "indiamart":
+            elif effective_platform == "github":
+                raw_leads = await fetch_github_tech_leads(
+                    industry=target_industry,
+                    location=target_location,
+                    max_leads=max_leads,
+                )
+                source_status = "results" if raw_leads else "no_results"
+            elif effective_platform == "hacker_news":
+                raw_leads = await fetch_hacker_news_leads(
+                    industry=target_industry,
+                    max_leads=max_leads,
+                )
+                source_status = "results" if raw_leads else "no_results"
+            elif effective_platform == "domain_scraper":
+                domain_target = target_industry if "." in target_industry else f"{target_industry}.com"
+                raw_leads = await scrape_domain_leads(
+                    domain_or_url=domain_target,
+                    industry="Tech & Business",
+                    location=target_location,
+                )
+                source_status = "results" if raw_leads else "no_results"
+            elif effective_platform == "indiamart":
                 raw_leads = await fetch_indiamart_leads(
                     query=target_industry,
                     location=target_location,
@@ -242,10 +313,10 @@ Return JSON with keys: observed_facts, unknowns, research_hypotheses.
 Each observed fact must cite the supplied field it relies on.
 
 Business name: {company}
-Website: {website or "not supplied"}
-Location: {lead.get("location") or "not supplied"}
-Industry query: {lead.get("industry") or "not supplied"}
-Source: {lead.get("platform") or "not supplied"}"""
+Website: {website or 'not supplied'}
+Location: {lead.get('location') or 'not supplied'}
+Industry query: {lead.get('industry') or 'not supplied'}
+Source: {lead.get('platform') or 'not supplied'}"""
 
         try:
             response = await self.call_llm(prompt=prompt, temperature=0.1)

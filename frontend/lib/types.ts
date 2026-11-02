@@ -63,7 +63,7 @@ export type CampaignPayload = {
   location_scope: { country: string; country_code: string; state: string; state_code: string; city: string };
   max_leads: number;
   campaign_name: string;
-  platform: "apollo" | "google_maps" | "indiamart" | "linkedin" | "web_search";
+  platform: "apollo" | "google_maps" | "indiamart" | "linkedin" | "web_search" | "github" | "hacker_news" | "domain_scraper";
 };
 
 export type CampaignResponse = {
