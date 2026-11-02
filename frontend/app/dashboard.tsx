@@ -26,11 +26,14 @@ const NAV_ITEMS: { id: NavItem; label: string; icon: typeof LayoutDashboard }[] 
 ];
 
 const PLATFORM_OPTIONS = [
-  { value: "web_search", label: "Web discovery", disabled: true },
   { value: "apollo", label: "Apollo.io" },
+  { value: "domain_scraper", label: "Deep Website Domain Extractor (Zero-API)" },
+  { value: "github", label: "GitHub Open Source Tech (Zero-API)" },
+  { value: "hacker_news", label: "Hacker News Startup Launches (Zero-API)" },
   { value: "google_maps", label: "Google Maps" },
   { value: "indiamart", label: "IndiaMART", disabled: true },
-  { value: "linkedin", label: "LinkedIn", disabled: true }
+  { value: "linkedin", label: "LinkedIn", disabled: true },
+  { value: "web_search", label: "Web discovery", disabled: true }
 ] as const;
 
 const PAGE_TITLES: Record<NavItem, string> = {
