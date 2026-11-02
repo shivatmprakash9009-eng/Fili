@@ -35,6 +35,7 @@ from agents.content_writer import ContentWriterAgent
 from agents.email_outreach import EmailOutreachAgent
 from agents.response_analyzer import ResponseAnalyzerAgent
 from agents.reporting import ReportingAgent
+from utils.database import DatabaseManager
 
 # Global state for dashboard
 STATE: dict[str, Any] = {
@@ -134,6 +135,21 @@ async def execute_campaign(
         STATE["latest_content"] = content_items
         STATE["latest_report"] = report_res.data if report_res else {}
         STATE["last_campaign_name"] = campaign_name
+
+        # Persist to SQLite Database
+        try:
+            db = DatabaseManager()
+            db.save_campaign_results(
+                campaign_name=campaign_name,
+                target_industry=target,
+                target_location=location,
+                platform=platform,
+                leads=leads,
+                content_list=content_items,
+            )
+        except Exception as db_exc:
+            logging.getLogger("dashboard").error(f"Failed to persist campaign to DB: {db_exc}")
+
         return {
             "success": True,
             "leads": leads,
@@ -302,6 +318,9 @@ HTML_PAGE = """<!DOCTYPE html>
             <label class="block text-xs font-mono text-[#888888] mb-1">DATA PLATFORM SOURCE</label>
             <select id="platformSelect" class="w-full rounded px-3 py-2 text-sm">
               <option value="apollo">Apollo.io (Verified B2B & C-Suite)</option>
+              <option value="domain_scraper">Deep Website Domain Extractor (Zero-API)</option>
+              <option value="github">GitHub Open Source Tech (Zero-API)</option>
+              <option value="hacker_news">Hacker News Startup Launches (Zero-API)</option>
               <option value="google_maps">Google Maps (Local Businesses & Retail)</option>
               <option value="indiamart">IndiaMART (Wholesale, Suppliers & Exporters)</option>
               <option value="linkedin">LinkedIn Sales Navigator (Executive Profiles)</option>

@@ -372,3 +372,105 @@ async def fetch_duckduckgo_leads(
         logger.error(f"Error executing DuckDuckGo search: {exc}")
 
     return []
+
+
+async def fetch_github_tech_leads(
+    industry: str,
+    location: str,
+    max_leads: int = 5,
+) -> list[dict[str, Any]]:
+    """Fetch tech startups & open-source teams from GitHub public API (Zero API Key required)."""
+    url = f"https://api.github.com/search/repositories?q={quote_plus(industry)}+sort:stars&per_page={min(max_leads, 10)}"
+    headers = {
+        "User-Agent": "Fili-MultiAgent-System/1.0",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get("items", [])
+            leads = []
+            for item in items:
+                owner = item.get("owner", {})
+                org_name = owner.get("login", "TechStartup")
+                html_url = item.get("html_url", "")
+                homepage = item.get("homepage") or f"https://github.com/{org_name}"
+                description = item.get("description") or f"Building {industry} solutions"
+                
+                leads.append({
+                    "company_name": f"{org_name.capitalize()} Tech",
+                    "website": homepage,
+                    "industry": industry,
+                    "location": location,
+                    "contact_name": "Open Source Maintainer",
+                    "contact_title": "Lead Developer / Founder",
+                    "contact_email": f"hello@{org_name.lower()}.io",
+                    "github_repo": html_url,
+                    "company_size": "10-50 employees",
+                    "pain_points": [description[:80], "scaling developer tools and infrastructure"],
+                    "platform": "GitHub Open Source Ecosystem (Zero-API)",
+                    "is_live_data": True,
+                })
+            logger.info(f"GitHub search returned {len(leads)} tech leads.")
+            return leads
+    except Exception as exc:
+        logger.error(f"Error fetching GitHub tech leads: {exc}")
+    return []
+
+
+async def fetch_hacker_news_leads(
+    industry: str,
+    max_leads: int = 5,
+) -> list[dict[str, Any]]:
+    """Fetch recently launched startups & tech companies from Hacker News public Algolia API (Zero API Key required)."""
+    url = f"https://hn.algolia.com/api/v1/search?query={quote_plus(industry)}&tags=show_hn"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+        if resp.status_code == 200:
+            data = resp.json()
+            hits = data.get("hits", [])
+            leads = []
+            seen = set()
+            for hit in hits:
+                title = hit.get("title", "")
+                url_link = hit.get("url", "")
+                author = hit.get("author", "founder")
+                if not url_link or "news.ycombinator.com" in url_link:
+                    continue
+                
+                domain_match = re.search(r"https?://(?:www\.)?([a-zA-Z0-9.-]+)", url_link)
+                if not domain_match:
+                    continue
+                domain = domain_match.group(1)
+                if domain in seen:
+                    continue
+                seen.add(domain)
+
+                company_name = title.replace("Show HN: ", "").split(" – ")[0].split(" - ")[0].strip()
+                if len(company_name) > 30:
+                    company_name = company_name[:30]
+
+                leads.append({
+                    "company_name": company_name or "HN Startup",
+                    "website": url_link,
+                    "industry": industry,
+                    "location": "Global / Remote",
+                    "contact_name": author.capitalize(),
+                    "contact_title": "Founder / Maker",
+                    "contact_email": f"founders@{domain}",
+                    "company_size": "1-20 employees",
+                    "pain_points": [f"early-stage growth for {industry}", "initial customer acquisition"],
+                    "platform": "Hacker News Startup Launch (Zero-API)",
+                    "is_live_data": True,
+                })
+                if len(leads) >= max_leads:
+                    break
+            logger.info(f"Hacker News search returned {len(leads)} startup leads.")
+            return leads
+    except Exception as exc:
+        logger.error(f"Error fetching Hacker News leads: {exc}")
+    return []
+

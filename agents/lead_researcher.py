@@ -13,9 +13,12 @@ from utils.live_search import (
     fetch_serpapi_leads,
     fetch_indiamart_leads,
     fetch_duckduckgo_leads,
+    fetch_github_tech_leads,
+    fetch_hacker_news_leads,
     get_apollo_key,
     get_serpapi_key,
 )
+from utils.domain_scraper import scrape_domain_leads
 
 
 class LeadResearcherAgent(BaseAgent):
@@ -60,6 +63,9 @@ class LeadResearcherAgent(BaseAgent):
             "google_maps": "Google Maps Local Business",
             "linkedin": "LinkedIn Sales Navigator",
             "web_search": "Deep Web & Crunchbase",
+            "github": "GitHub Open Source Ecosystem (Zero-API)",
+            "hacker_news": "Hacker News Startup Launches (Zero-API)",
+            "domain_scraper": "Deep Website Domain Extractor (Zero-API)",
         }
         platform_label = platform_names.get(platform, "Apollo.io B2B Intelligence")
 
@@ -81,6 +87,18 @@ Include fields: 'rating' (e.g. '4.8 ★'), 'reviews_count' (e.g. 142), 'full_add
             platform_guidance = """
 Focus on senior decision makers (Founder, CEO, VP, Director) discovered via LinkedIn Sales Navigator.
 Include fields: 'headline' (e.g. 'VP of Engineering @...'), 'growth_rate' (e.g. '+24% YoY')."""
+        elif platform == "github":
+            platform_guidance = """
+Focus on high-growth tech startups and open-source creators from GitHub.
+Include fields: 'github_repo', 'technologies_used', 'maintainer_contact'."""
+        elif platform == "hacker_news":
+            platform_guidance = """
+Focus on recently launched startups from Hacker News Show HN.
+Include fields: 'launch_date', 'founder_name', 'initial_traction'."""
+        elif platform == "domain_scraper":
+            platform_guidance = """
+Focus on direct extraction from target website domain, extracting exact emails, phone numbers, and team contacts.
+Include fields: 'all_extracted_emails', 'all_extracted_phones', 'social_links'."""
         elif platform == "apollo":
             platform_guidance = """
 Focus on high-growth B2B companies with verified corporate email domains and direct intelligence via Apollo.io.
@@ -95,6 +113,27 @@ Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce
                 industry=target_industry,
                 location=target_location,
                 max_leads=max_leads,
+            )
+        elif platform == "github":
+            self.logger.info("Fetching leads from GitHub public open-source ecosystem (Zero-API)...")
+            leads = await fetch_github_tech_leads(
+                industry=target_industry,
+                location=target_location,
+                max_leads=max_leads,
+            )
+        elif platform == "hacker_news":
+            self.logger.info("Fetching startup leads from Hacker News Show HN (Zero-API)...")
+            leads = await fetch_hacker_news_leads(
+                industry=target_industry,
+                max_leads=max_leads,
+            )
+        elif platform == "domain_scraper" or ("." in target_industry and not " " in target_industry):
+            domain_target = target_industry if "." in target_industry else f"{target_industry}.com"
+            self.logger.info(f"Crawling website domain {domain_target} for direct lead extraction (Zero-API)...")
+            leads = await scrape_domain_leads(
+                domain_or_url=domain_target,
+                industry="Tech & Business",
+                location=target_location,
             )
         elif platform in ["serpapi", "google_maps"] and get_serpapi_key():
             self.logger.info("Attempting live SerpAPI lookup...")
