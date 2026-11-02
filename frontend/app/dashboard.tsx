@@ -258,14 +258,36 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
               <div><span className="section-kicker">NEW WORKFLOW</span><h2 id="campaign-dialog-title">Launch a campaign</h2></div>
               <button type="button" className="icon-button modal-close" onClick={onClose} disabled={busy} aria-label="Close"><X size={18}/></button>
             </div>
-            <form onSubmit={(event)=>{event.preventDefault();onSubmit({target,location:locationScope ? `${locationScope.city}, ${locationScope.state}, ${locationScope.country}` : "",location_scope:locationScope!,max_leads:Number(count),campaign_name:name,platform});}} className="campaign-form">
+            <form onSubmit={(event)=>{event.preventDefault();onSubmit({target,location:locationScope ? `${locationScope.city}, ${locationScope.state}, ${locationScope.country}` : "Global",location_scope:locationScope||{country:"Global",country_code:"GL",state:"Global",state_code:"GL",city:"Global"},max_leads:Number(count),campaign_name:name,platform});}} className="campaign-form">
               <label className="field-group">
                 <span>Campaign name</span>
                 <input value={name} onChange={(e)=>setName(e.target.value)} maxLength={100} required/>
               </label>
               <label className="field-group">
-                <span>Who are you looking for?</span>
-                <input value={target} onChange={(e)=>setTarget(e.target.value)} maxLength={160} placeholder="e.g. FinTech founders" required/>
+                <span>
+                  {platform === "domain_scraper"
+                    ? "Website Domain to Extract (e.g. stripe.com)"
+                    : platform === "github"
+                    ? "GitHub Topic / Tech Stack (e.g. python, ai)"
+                    : platform === "hacker_news"
+                    ? "Hacker News Startup Keyword"
+                    : "Who are you looking for?"}
+                </span>
+                <input
+                  value={target}
+                  onChange={(e)=>setTarget(e.target.value)}
+                  maxLength={160}
+                  placeholder={
+                    platform === "domain_scraper"
+                      ? "e.g. openai.com or github.com"
+                      : platform === "github"
+                      ? "e.g. vector-database"
+                      : platform === "hacker_news"
+                      ? "e.g. AI tools"
+                      : "e.g. FinTech founders"
+                  }
+                  required
+                />
               </label>
               <div className="form-grid">
                 <label className="field-group">
@@ -274,7 +296,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
                     {PLATFORM_OPTIONS.map((option)=><option value={option.value} key={option.value} disabled={"disabled" in option && option.disabled}>{option.label}</option>)}
                   </select>
                 </label>
-                <div className="field-group location-field"><LocationSelector value={locationScope} onChange={setLocationScope}/><span className="location-provider-note">City-verified discovery is currently enabled for Google Maps and Apollo. Other connectors stay disabled until they can verify each business address.</span></div>
+                <div className="field-group location-field"><LocationSelector value={locationScope} onChange={setLocationScope}/><span className="location-provider-note">City-verified discovery is enabled for Google Maps and Apollo. Zero-API extractors work globally.</span></div>
               </div>
               <label className="field-group">
                 <span>Maximum prospects</span>
@@ -289,7 +311,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
               <div className="modal-footnote"><ShieldCheck size={15}/> Outreach remains draft-only. Review prospect sources before contacting.</div>
               <div className="modal-actions">
                 <button type="button" className="button button-quiet" onClick={onClose} disabled={busy}>Cancel</button>
-                <button type="submit" className="button button-primary" disabled={busy||!target.trim()||!name.trim()||!locationScope}>
+                <button type="submit" className="button button-primary" disabled={busy||!target.trim()||!name.trim()}>
                   {busy?<><LoaderCircle size={16} className="spin"/> Building pipeline</>:<>Start discovery <ArrowRight size={16}/></>}
                 </button>
               </div>
