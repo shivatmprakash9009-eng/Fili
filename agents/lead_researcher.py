@@ -63,15 +63,18 @@ class LeadResearcherAgent(BaseAgent):
         except (TypeError, ValueError):
             max_leads = 10
 
-<<<<<<< HEAD
-        Args:
-            payload: Must contain 'target_industry' and optionally
-                     'target_location', 'max_leads'.
-        """
-        target_industry = payload.get("target_industry", "SaaS")
-        target_location = payload.get("target_location", "USA")
-        max_leads = payload.get("max_leads", 10)
-        platform = payload.get("platform", "apollo").lower()
+        if not target_industry:
+            raise ValueError("A target industry or business category is required.")
+        if location_scope is not None:
+            if not isinstance(location_scope, dict):
+                raise ValueError("Location scope must be an object.")
+            if not all(str(location_scope.get(field) or "").strip() for field in ("city", "state", "country")):
+                raise ValueError("Strict location targeting requires country, state and city.")
+
+        self.logger.info(
+            "Discovery start provider=%s industry=%s location=%s limit=%s",
+            platform, target_industry, target_location, max_leads,
+        )
 
         platform_names = {
             "apollo": "Apollo.io B2B Intelligence",
@@ -84,22 +87,7 @@ class LeadResearcherAgent(BaseAgent):
             "domain_scraper": "Deep Website Domain Extractor (Zero-API)",
         }
         platform_label = platform_names.get(platform, "Apollo.io B2B Intelligence")
-=======
-        if not target_industry:
-            raise ValueError("A target industry or business category is required.")
-        if location_scope is not None:
-            if not isinstance(location_scope, dict):
-                raise ValueError("Location scope must be an object.")
-            if not all(str(location_scope.get(field) or "").strip() for field in ("city", "state", "country")):
-                raise ValueError("Strict location targeting requires country, state and city.")
->>>>>>> origin/main
 
-        self.logger.info(
-            "Discovery start provider=%s industry=%s location=%s limit=%s",
-            platform, target_industry, target_location, max_leads,
-        )
-
-<<<<<<< HEAD
         platform_guidance = ""
         if platform == "indiamart":
             platform_guidance = """
@@ -130,56 +118,6 @@ Include fields: 'all_extracted_emails', 'all_extracted_phones', 'social_links'."
 Focus on high-growth B2B companies with verified corporate email domains and direct intelligence via Apollo.io.
 Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce'], 'funding_stage': 'Series A/Bootstrapped'."""
 
-        leads: list[dict[str, Any]] = []
-
-        # ── 1. Attempt Live Data Connectors First ─────────────────
-        if platform == "apollo" and get_apollo_key():
-            self.logger.info("Attempting live Apollo.io B2B intelligence lookup...")
-            leads = await fetch_apollo_leads(
-                industry=target_industry,
-                location=target_location,
-                max_leads=max_leads,
-            )
-        elif platform == "github":
-            self.logger.info("Fetching leads from GitHub public open-source ecosystem (Zero-API)...")
-            leads = await fetch_github_tech_leads(
-                industry=target_industry,
-                location=target_location,
-                max_leads=max_leads,
-            )
-        elif platform == "hacker_news":
-            self.logger.info("Fetching startup leads from Hacker News Show HN (Zero-API)...")
-            leads = await fetch_hacker_news_leads(
-                industry=target_industry,
-                max_leads=max_leads,
-            )
-        elif platform == "domain_scraper" or ("." in target_industry and not " " in target_industry):
-            domain_target = target_industry if "." in target_industry else f"{target_industry}.com"
-            self.logger.info(f"Crawling website domain {domain_target} for direct lead extraction (Zero-API)...")
-            leads = await scrape_domain_leads(
-                domain_or_url=domain_target,
-                industry="Tech & Business",
-                location=target_location,
-            )
-        elif platform in ["serpapi", "google_maps"] and get_serpapi_key():
-            self.logger.info("Attempting live SerpAPI lookup...")
-            engine = "google_maps" if platform == "google_maps" else "google"
-            leads = await fetch_serpapi_leads(
-                query=target_industry,
-                location=target_location,
-                max_leads=max_leads,
-                engine=engine,
-            )
-        elif platform == "indiamart":
-            leads = await fetch_indiamart_leads(
-                query=target_industry,
-                location=target_location,
-                max_leads=max_leads,
-            )
-        elif platform == "web_search":
-            if get_serpapi_key():
-                leads = await fetch_serpapi_leads(
-=======
         providers = {
             "apollo": "Apollo.io",
             "google_maps": "Google Maps via SerpAPI",
@@ -375,10 +313,10 @@ Return JSON with keys: observed_facts, unknowns, research_hypotheses.
 Each observed fact must cite the supplied field it relies on.
 
 Business name: {company}
-Website: {website or "not supplied"}
-Location: {lead.get("location") or "not supplied"}
-Industry query: {lead.get("industry") or "not supplied"}
-Source: {lead.get("platform") or "not supplied"}"""
+Website: {website or 'not supplied'}
+Location: {lead.get('location') or 'not supplied'}
+Industry query: {lead.get('industry') or 'not supplied'}
+Source: {lead.get('platform') or 'not supplied'}"""
 
         try:
             response = await self.call_llm(prompt=prompt, temperature=0.1)
