@@ -23,6 +23,8 @@ services:
         sync: false
       - key: SERPAPI_API_KEY
         sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://fili-nine.vercel.app,http://localhost:8000,http://127.0.0.1:8000"
       - key: FILI_API_RATE_LIMIT_PER_MINUTE
         value: "60"
       - key: PYTHON_VERSION
