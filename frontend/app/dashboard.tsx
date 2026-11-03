@@ -238,6 +238,8 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
   const [count,setCount]=useState("10");
   const [name,setName]=useState("New campaign");
   const [platform,setPlatform]=useState<CampaignPayload["platform"]>("google_maps");
+  const isGeoSource = platform === "apollo" || platform === "google_maps";
+  const isDomainSource = platform === "domain_scraper";
 
   useEffect(()=>{
     if(!open)return;
@@ -258,45 +260,95 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
               <div><span className="section-kicker">NEW WORKFLOW</span><h2 id="campaign-dialog-title">Launch a campaign</h2></div>
               <button type="button" className="icon-button modal-close" onClick={onClose} disabled={busy} aria-label="Close"><X size={18}/></button>
             </div>
-            <form onSubmit={(event)=>{event.preventDefault();onSubmit({target,location:locationScope ? `${locationScope.city}, ${locationScope.state}, ${locationScope.country}` : "Global",location_scope:locationScope||{country:"Global",country_code:"GL",state:"Global",state_code:"GL",city:"Global"},max_leads:Number(count),campaign_name:name,platform});}} className="campaign-form">
+            <form onSubmit={(event)=>{
+              event.preventDefault();
+              const normalizedTarget = target.trim();
+              if (isDomainSource) {
+                try {
+                  const parsed = new URL(normalizedTarget);
+                  if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname.includes(".")) return;
+                } catch { return; }
+              }
+              const selectedLocation = isGeoSource ? locationScope : null;
+              onSubmit({
+                target: normalizedTarget,
+                location: selectedLocation ? `${selectedLocation.city}, ${selectedLocation.state}, ${selectedLocation.country}` : "Global",
+                location_scope: selectedLocation || {country:"Global",country_code:"GL",state:"Global",state_code:"GL",city:"Global"},
+                max_leads:Number(count),
+                campaign_name:name,
+                platform
+              });
+            }} className="campaign-form">
               <label className="field-group">
                 <span>Campaign name</span>
                 <input value={name} onChange={(e)=>setName(e.target.value)} maxLength={100} required/>
               </label>
               <label className="field-group">
                 <span>
-                  {platform === "domain_scraper"
-                    ? "Website Domain to Extract (e.g. stripe.com)"
+                  {isDomainSource
+                    ? "Website URL to crawl"
                     : platform === "github"
-                    ? "GitHub Topic / Tech Stack (e.g. python, ai)"
+                    ? "GitHub topic / technology"
                     : platform === "hacker_news"
-                    ? "Hacker News Startup Keyword"
-                    : "Who are you looking for?"}
+                    ? "Hacker News startup keyword"
+                    : "Industry or business category"}
                 </span>
                 <input
+                  type={isDomainSource ? "url" : "text"}
+                  inputMode={isDomainSource ? "url" : "text"}
                   value={target}
                   onChange={(e)=>setTarget(e.target.value)}
-                  maxLength={160}
+                  maxLength={isDomainSource ? 500 : 160}
                   placeholder={
-                    platform === "domain_scraper"
-                      ? "e.g. openai.com or github.com"
+                    isDomainSource
+                      ? "https://stripe.com"
                       : platform === "github"
-                      ? "e.g. vector-database"
+                      ? "e.g. vector-database, machine-learning"
                       : platform === "hacker_news"
                       ? "e.g. AI tools"
                       : "e.g. FinTech founders"
                   }
+                  aria-describedby="campaign-target-hint"
                   required
                 />
+                <span id="campaign-target-hint" className="field-help">
+                  {isDomainSource
+                    ? "Paste one public website URL. Fili will crawl its homepage and selected public pages on that domain."
+                    : platform === "github"
+                    ? "Searches public GitHub repositories using this topic or technology."
+                    : platform === "hacker_news"
+                    ? "Searches public Show HN launches matching this keyword."
+                    : platform === "apollo"
+                    ? "Searches company records by industry and selected location."
+                    : platform === "google_maps"
+                    ? "Searches local businesses matching this category and selected location."
+                    : "Enter the business category or search phrase for this source."}
+                </span>
               </label>
               <div className="form-grid">
                 <label className="field-group">
                   <span>Discovery source</span>
-                  <select value={platform} onChange={(e)=>setPlatform(e.target.value as CampaignPayload["platform"])}>
+                  <select value={platform} onChange={(e)=>{
+                    setPlatform(e.target.value as CampaignPayload["platform"]);
+                    setLocationScope(null);
+                  }}>
                     {PLATFORM_OPTIONS.map((option)=><option value={option.value} key={option.value} disabled={"disabled" in option && option.disabled}>{option.label}</option>)}
                   </select>
                 </label>
-                <div className="field-group location-field"><LocationSelector value={locationScope} onChange={setLocationScope}/><span className="location-provider-note">City-verified discovery is enabled for Google Maps and Apollo. Zero-API extractors work globally.</span></div>
+                {isGeoSource ? (
+                  <div className="field-group location-field">
+                    <LocationSelector value={locationScope} onChange={setLocationScope}/>
+                    <span className="location-provider-note">Select a country, state and city. Results without matching location evidence are excluded.</span>
+                  </div>
+                ) : (
+                  <div className="field-group source-context-field">
+                    <span>Search scope</span>
+                    <div className="source-context-card">
+                      <Globe size={15}/>
+                      <div><strong>Global discovery</strong><small>{isDomainSource ? "The supplied website is the crawl target." : "This public source does not use geographic filters."}</small></div>
+                    </div>
+                  </div>
+                )}
               </div>
               <label className="field-group">
                 <span>Maximum prospects</span>
