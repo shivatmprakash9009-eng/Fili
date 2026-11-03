@@ -943,3 +943,16 @@ button, input, select, textarea { font-family: inherit; }
 .developer-notice{border:1px solid #d7ebdf;background:#f7fcf8;color:#287653}
 @media(max-width:900px){.developer-create-form{grid-template-columns:1fr 1fr}.developer-create-form>.button{grid-column:1/-1;justify-self:start}}
 @media(max-width:600px){.developer-panel{padding:17px 14px}.developer-heading{align-items:flex-start;flex-wrap:wrap}.developer-heading-copy{min-width:calc(100% - 60px)}.developer-docs-link{margin-left:55px}.developer-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.developer-create-form{grid-template-columns:1fr}.developer-create-form>.button{grid-column:auto;width:100%;justify-content:center}.developer-key-row{align-items:flex-start}.developer-key-actions{flex-direction:column;align-items:flex-end;gap:7px}.developer-secret-value{align-items:stretch;flex-direction:column}.developer-secret-value .button{justify-content:center}}
+
+
+/* Source-aware campaign form */
+.field-group .field-help{display:block;color:#8995a6;font-size:10px;font-weight:450;line-height:1.55}
+.source-context-card{display:flex;align-items:center;gap:9px;min-height:43px;padding:9px 11px;border:1px solid #e5eaf1;border-radius:7px;background:#f8fafd;color:#6c7d94}
+.source-context-card>svg{flex:0 0 auto;color:#5578b7}
+.source-context-card>div{display:flex;flex-direction:column;gap:3px}
+.source-context-card strong{color:#40536e;font-size:10px;font-weight:700}
+.source-context-card small{color:#8995a6;font-size:9px;line-height:1.4}
+.source-extraction-note{display:flex;align-items:flex-start;gap:9px;padding:11px 12px;border:1px solid #e2eaf5;border-radius:7px;background:#f7faff;color:#70819a;font-size:10px;line-height:1.6}
+.source-extraction-note svg{flex:0 0 auto;margin-top:1px;color:#5378b9}
+.source-extraction-note strong{color:#405675}
+@media(max-width:600px){.source-context-card{min-height:42px}.source-extraction-note{font-size:9px}}
