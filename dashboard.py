@@ -941,7 +941,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 max_leads = max(1, min(int(data.get("max_leads", 5)), 25))
                 campaign_name = str(data.get("campaign_name", "Fili Campaign")).strip()[:100]
                 platform = str(data.get("platform", "apollo")).lower()
-                if platform not in {"apollo", "google_maps", "indiamart", "linkedin", "web_search"}:
+                if platform not in {"apollo", "google_maps", "indiamart", "linkedin", "web_search", "github", "hacker_news", "domain_scraper"}:
                     self.send_json({"error": "Unsupported prospecting platform."}, HTTPStatus.BAD_REQUEST)
                     return
                 location_scope = data.get("location_scope")
