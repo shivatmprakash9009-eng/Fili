@@ -298,7 +298,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
                   inputMode={isDomainSource ? "url" : "text"}
                   value={target}
                   onChange={(e)=>setTarget(e.target.value)}
-                  maxLength={isDomainSource ? 500 : 160}
+                  maxLength={160}
                   placeholder={
                     isDomainSource
                       ? "https://stripe.com"
