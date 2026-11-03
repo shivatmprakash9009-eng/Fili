@@ -27,5 +27,9 @@ services:
         value: "https://fili-nine.vercel.app,http://localhost:8000,http://127.0.0.1:8000"
       - key: FILI_API_RATE_LIMIT_PER_MINUTE
         value: "60"
+      - key: FILI_API_MAX_ACTIVE_KEYS
+        value: "10"
+      - key: FILI_API_DAILY_SEARCH_LIMIT
+        value: "200"
       - key: PYTHON_VERSION
         value: "3.11.11"

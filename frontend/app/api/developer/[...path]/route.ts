@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_ORIGIN = "https://fili-api-p0uz.onrender.com";
+const API_ORIGIN = process.env.FILI_DEVELOPER_API_ORIGIN?.trim() || "https://fili-api-p0uz.onrender.com";
 
 async function proxyDeveloperRequest(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
@@ -10,7 +10,7 @@ async function proxyDeveloperRequest(request: NextRequest, context: { params: Pr
   }
 
   const authorization = request.headers.get("authorization");
-  if (!authorization?.startsWith("Bearer ")) {
+  if (!authorization?.startsWith("Bearer ") || authorization.length > 4200) {
     return NextResponse.json({ error: "Sign in to Fili before using developer tools." }, { status: 401 });
   }
 

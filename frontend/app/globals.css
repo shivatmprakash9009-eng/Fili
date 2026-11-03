@@ -943,3 +943,10 @@ button, input, select, textarea { font-family: inherit; }
 .developer-notice{border:1px solid #d7ebdf;background:#f7fcf8;color:#287653}
 @media(max-width:900px){.developer-create-form{grid-template-columns:1fr 1fr}.developer-create-form>.button{grid-column:1/-1;justify-self:start}}
 @media(max-width:600px){.developer-panel{padding:17px 14px}.developer-heading{align-items:flex-start;flex-wrap:wrap}.developer-heading-copy{min-width:calc(100% - 60px)}.developer-docs-link{margin-left:55px}.developer-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.developer-create-form{grid-template-columns:1fr}.developer-create-form>.button{grid-column:auto;width:100%;justify-content:center}.developer-key-row{align-items:flex-start}.developer-key-actions{flex-direction:column;align-items:flex-end;gap:7px}.developer-secret-value{align-items:stretch;flex-direction:column}.developer-secret-value .button{justify-content:center}}
+
+/* Auth gate (session check / email verification) */
+.auth-gate { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: #f8fafc; }
+.auth-gate-card { width: 100%; max-width: 420px; display: grid; gap: 12px; justify-items: start; padding: 28px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; color: #0f172a; }
+.auth-gate-card h1 { margin: 0; font-size: 20px; }
+.auth-gate-card p { margin: 0; color: #475569; font-size: 14px; line-height: 1.5; }
+.auth-gate-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }

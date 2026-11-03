@@ -6,7 +6,7 @@ import { useState } from "react";
 import {
   ArrowRight, ArrowUpRight, Check, ChevronDown, CircleDot, Compass,
   Database, FileCheck2, Fingerprint, Globe2, Layers3, Menu, ShieldCheck,
-  Target, Workflow, X, Zap
+  Target, X, Zap
 } from "lucide-react";
 
 const steps = [

@@ -22,9 +22,10 @@ Set these only on the API host:
 - `FIREBASE_SERVICE_ACCOUNT_JSON`: full Firebase Admin service-account JSON, stored as a server secret (or use managed Google Application Default Credentials).
 - `SUPABASE_URL=https://aynlbiuakpaxtmrgaxeh.supabase.co`
 - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service-role/secret key. Server-side only; never put it in Vercel `NEXT_PUBLIC_*` variables or browser code.
-- `APOLLO_API_KEY` and/or `SERPAPI_API_KEY` for live provider search.
+- `APOLLO_API_KEY` and/or `SERPAPI_API_KEY` for live provider search. A source whose key is missing is reported in `meta.provider_errors` as `provider_not_configured`.
+- Optional limits: `FILI_API_RATE_LIMIT_PER_MINUTE` (60), `FILI_API_MAX_ACTIVE_KEYS` (10 per user), `FILI_API_DAILY_SEARCH_LIMIT` (200 searches per user per UTC day).
 
-Apply `supabase/migrations/202611020001_fili_public_api.sql` to the Fili Supabase project before using key or prospect endpoints. The API uses only the dedicated `fili_*` tables; it does not touch TIWAT tables.
+Apply both migrations in order to the Fili Supabase project before using key or prospect endpoints: `202611020001_fili_public_api.sql`, then `202611030001_fili_api_hardening.sql` (keeps `updated_at` accurate and adds the quota index). The API uses only the dedicated `fili_*` tables; it does not touch TIWAT tables.
 
 ## Authentication
 
@@ -45,7 +46,8 @@ Apply `supabase/migrations/202611020001_fili_public_api.sql` to the Fili Supabas
 | POST | `/v1/prospects/search` | API key: `prospects:write` | Search Apollo, Google Maps and web search |
 | GET | `/v1/prospects/{id}` | API key: `prospects:read` | Read an owned prospect |
 | POST | `/v1/prospects/research?prospect_id=...` | API key: `prospects:read` | Return bounded evidence-aware enrichment |
-| GET | `/v1/usage` | API key: `usage:read` | Last 30 days of API usage for this key owner |\n| GET | `/v1/account/usage` | Firebase ID token | Last 30 days of usage for the signed-in dashboard owner |
+| GET | `/v1/usage` | API key: `usage:read` | Last 30 days of API usage for this key owner |
+| GET | `/v1/account/usage` | Firebase ID token | Last 30 days of usage for the signed-in dashboard owner |
 
 Search body:
 
@@ -75,6 +77,12 @@ pip install -r requirements.txt -r api-requirements.txt
 ```
 
 Configure secrets in the API host dashboard. Do not deploy Firebase service-account JSON or Supabase service-role credentials to the Next.js frontend. Restrict API ingress with TLS and provider-level rate limiting before exposing it to third parties.
+
+## Limits and errors
+
+- Requests per key per minute are limited in memory on the API instance (exact for one instance; use a shared counter such as Redis before scaling out). `429` responses carry `Retry-After`.
+- Search calls are capped per user per UTC day. `404` is returned for unknown prospects or keys, `422` for malformed IDs or bodies, and `409` when the active-key cap is reached.
+- Usage records the real route (for example `GET /v1/prospects/{prospect_id}`) and the real HTTP status, so `failed` and `by_route` are accurate. Usage totals page through all rows; `truncated: true` means the 20,000-row reporting cap was hit.
 
 ## Current boundary
 

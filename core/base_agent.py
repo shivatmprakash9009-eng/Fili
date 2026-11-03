@@ -13,6 +13,12 @@ from typing import Any
 from core.task import Task, TaskResult, TaskStatus
 
 
+# Programming/validation errors fail the same way every time; retrying only adds latency.
+NON_RETRYABLE_ERRORS = (
+    ValueError, TypeError, KeyError, AttributeError, NameError, ImportError, NotImplementedError,
+)
+
+
 class AgentState(str, Enum):
     """Possible states of an agent."""
     IDLE = "idle"
@@ -96,6 +102,12 @@ class BaseAgent(ABC):
                     duration_seconds=round(duration, 3),
                     agent_id=self.agent_id,
                 )
+            except NON_RETRYABLE_ERRORS as exc:
+                last_error = str(exc) if isinstance(exc, ValueError) else f"{type(exc).__name__}: {exc}"
+                self.logger.warning(
+                    f"[{self.name}] Task {task.task_id} failed without retry: {last_error}"
+                )
+                break
             except Exception as exc:
                 last_error = str(exc)
                 self.logger.warning(

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAccountAllowed, verifyFirebaseToken } from "@/lib/server-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,21 @@ async function handle(request: NextRequest, context: RouteContext) {
 
   if ((method === "GET" && !GET_ROUTES.has(key)) || (method === "POST" && !POST_ROUTES.has(key))) {
     return NextResponse.json({ error: "Route not found." }, { status: 404 });
+  }
+
+  // Every call must come from a signed-in Fili user; the shared server token alone is never enough.
+  const user = await verifyFirebaseToken(request.headers.get("authorization"));
+  if (!user) {
+    return NextResponse.json(
+      { error: "Sign in to Fili to continue." },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+  if (!isAccountAllowed(user)) {
+    return NextResponse.json(
+      { error: "Verify your email address to use Fili." },
+      { status: 403, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   const base = backendUrl();
@@ -86,6 +102,7 @@ async function handle(request: NextRequest, context: RouteContext) {
       headers: {
         Accept: request.headers.get("accept") || "application/json",
         ...(apiToken ? { Authorization: "Bearer " + apiToken } : {}),
+        "X-Fili-User": user.uid,
         ...(body ? { "Content-Type": "application/json" } : {})
       },
       ...(body ? { body } : {})

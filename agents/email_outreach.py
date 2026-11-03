@@ -14,6 +14,11 @@ from core.base_agent import BaseAgent
 from core.task import Task
 
 
+def _single_line(value: str) -> str:
+    """Collapse CR/LF so user- or LLM-supplied text cannot inject extra headers."""
+    return " ".join(str(value or "").split())
+
+
 class EmailOutreachAgent(BaseAgent):
     """Handles email sending with scheduling, rate limiting, and delivery tracking.
 
@@ -86,6 +91,11 @@ class EmailOutreachAgent(BaseAgent):
                 self.logger.warning(f"Skipping {item.get('lead', '?')} — no email")
                 skipped += 1
                 continue
+            if (item.get("lead_data") or {}).get("outreach_enabled") is not True:
+                # Only provider-verified, non-synthetic contacts are eligible; fail closed.
+                self.logger.warning(f"Skipping {item.get('lead', '?')} — contact not verified for outreach")
+                skipped += 1
+                continue
 
             result = await self.send_email(
                 to_email=to_email,
@@ -144,15 +154,13 @@ class EmailOutreachAgent(BaseAgent):
         # Real email sending
         try:
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"] = self.from_email
-            msg["To"] = to_email
+            # Header values must never contain line breaks (header injection).
+            msg["Subject"] = _single_line(subject)
+            msg["From"] = _single_line(self.from_email)
+            msg["To"] = _single_line(to_email)
             msg.attach(MIMEText(body, "plain"))
-
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
-                server.sendmail(self.from_email, to_email, msg.as_string())
+            # smtplib is blocking; keep it off the event loop.
+            await asyncio.to_thread(self._smtp_send, to_email, msg.as_string())
 
             self.logger.info(f"Email sent to {to_email}")
             record = {
@@ -176,6 +184,12 @@ class EmailOutreachAgent(BaseAgent):
                 "error": str(exc),
                 "timestamp": timestamp,
             }
+
+    def _smtp_send(self, to_email: str, message: str) -> None:
+        with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30) as server:
+            server.starttls()
+            server.login(self.smtp_user, self.smtp_password)
+            server.sendmail(self.from_email, to_email, message)
 
     async def schedule_email(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Schedule an email for later sending (placeholder).

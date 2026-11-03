@@ -43,6 +43,6 @@ The Python API rejects protected API requests without the bearer token when the 
 
 The UI is wired to the existing Python API for campaign discovery, status, website scanning and CSV/XLSX exports. It does not fabricate prospect metrics; before the first campaign it shows an empty state.
 
-Authentication is intentionally not included in this development build. Add a complete identity and organisation model before inviting external users or storing customer data.
+Authentication uses Firebase. `/dashboard` requires a signed-in user (email/password accounts must verify their email), and `/api/fili/*` verifies the Firebase ID token on the server with `jose` before forwarding to the Python engine together with the shared `FILI_API_TOKEN` and the user's UID. Set `NEXT_PUBLIC_FIREBASE_PROJECT_ID` (used as the expected token audience) and `FILI_API_TOKEN` on Vercel. Organisation/team workspaces and billing are not implemented yet.
 
 This is a SaaS dashboard foundation, not a complete multi-tenant SaaS release. The current Python engine keeps the latest campaign in process memory and its daily scheduler is in-process. User accounts, organisation membership, row-level tenant isolation, persistent campaign/lead storage, billing, audit events and a durable multi-instance job queue still need to be implemented before accepting external customers or storing their data. Do not expose the current Python service publicly without private ingress controls.

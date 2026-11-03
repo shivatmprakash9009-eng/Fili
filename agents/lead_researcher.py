@@ -22,7 +22,10 @@ from utils.live_search import (
     get_serpapi_key,
     ProviderRequestError,
 )
-from utils.domain_scraper import scrape_domain_leads
+from utils.domain_scraper import looks_like_domain, scrape_domain_leads
+
+# Sources whose records carry no street address, so a strict city filter can never be satisfied.
+NO_ADDRESS_PLATFORMS = {"github", "hacker_news", "domain_scraper"}
 
 
 def _matches_selected_city(lead: dict[str, Any], scope: dict[str, Any] | None) -> bool:
@@ -76,48 +79,6 @@ class LeadResearcherAgent(BaseAgent):
             platform, target_industry, target_location, max_leads,
         )
 
-        platform_names = {
-            "apollo": "Apollo.io B2B Intelligence",
-            "indiamart": "IndiaMART B2B Marketplace",
-            "google_maps": "Google Maps Local Business",
-            "linkedin": "LinkedIn Sales Navigator",
-            "web_search": "Deep Web & Crunchbase",
-            "github": "GitHub Open Source Ecosystem (Zero-API)",
-            "hacker_news": "Hacker News Startup Launches (Zero-API)",
-            "domain_scraper": "Deep Website Domain Extractor (Zero-API)",
-        }
-        platform_label = platform_names.get(platform, "Apollo.io B2B Intelligence")
-
-        platform_guidance = ""
-        if platform == "indiamart":
-            platform_guidance = """
-Focus specifically on Indian/global manufacturers, wholesale suppliers, exporters, and industrial trade businesses listed on IndiaMART.
-Include fields: 'business_type' (e.g. Manufacturer, Exporter, Wholesaler), 'verified_supplier' (true), 'phone': '+91...', 'main_products': ['item1', 'item2']."""
-        elif platform == "google_maps":
-            platform_guidance = """
-Focus on physical and regional businesses found on Google Maps.
-Include fields: 'rating' (e.g. '4.8 ★'), 'reviews_count' (e.g. 142), 'full_address', 'phone'."""
-        elif platform == "linkedin":
-            platform_guidance = """
-Focus on senior decision makers (Founder, CEO, VP, Director) discovered via LinkedIn Sales Navigator.
-Include fields: 'headline' (e.g. 'VP of Engineering @...'), 'growth_rate' (e.g. '+24% YoY')."""
-        elif platform == "github":
-            platform_guidance = """
-Focus on high-growth tech startups and open-source creators from GitHub.
-Include fields: 'github_repo', 'technologies_used', 'maintainer_contact'."""
-        elif platform == "hacker_news":
-            platform_guidance = """
-Focus on recently launched startups from Hacker News Show HN.
-Include fields: 'launch_date', 'founder_name', 'initial_traction'."""
-        elif platform == "domain_scraper":
-            platform_guidance = """
-Focus on direct extraction from target website domain, extracting exact emails, phone numbers, and team contacts.
-Include fields: 'all_extracted_emails', 'all_extracted_phones', 'social_links'."""
-        elif platform == "apollo":
-            platform_guidance = """
-Focus on high-growth B2B companies with verified corporate email domains and direct intelligence via Apollo.io.
-Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce'], 'funding_stage': 'Series A/Bootstrapped'."""
-
         providers = {
             "apollo": "Apollo.io",
             "google_maps": "Google Maps via SerpAPI",
@@ -128,11 +89,21 @@ Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce
             "hacker_news": "Hacker News Startup Launches",
             "domain_scraper": "Deep Website Domain Extractor",
         }
-        if platform not in providers and not ("." in target_industry and not " " in target_industry):
+        is_domain_target = looks_like_domain(target_industry)
+        if platform not in providers:
             raise ValueError("Unsupported discovery source.")
-        
-        effective_platform = "domain_scraper" if ("." in target_industry and not " " in target_industry) else platform
-        provider_name = providers.get(effective_platform, "Deep Website Domain Extractor")
+        # A bare website address always means "crawl this site"; never guess a TLD.
+        effective_platform = "domain_scraper" if is_domain_target else platform
+        if effective_platform == "domain_scraper" and not is_domain_target:
+            raise ValueError("Website extractor needs a website address such as acme.com.")
+        provider_name = providers[effective_platform]
+        location_filter_note = ""
+        if effective_platform in NO_ADDRESS_PLATFORMS and location_scope:
+            # These sources never supply addresses; a strict city filter would silently drop everything.
+            location_scope = None
+            location_filter_note = (
+                f"{provider_name} does not provide addresses, so the city filter was not applied."
+            )
         raw_leads: list[dict[str, Any]] = []
         source_status = "not_configured"
         source_message = ""
@@ -174,13 +145,16 @@ Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce
                 )
                 source_status = "results" if raw_leads else "no_results"
             elif effective_platform == "domain_scraper":
-                domain_target = target_industry if "." in target_industry else f"{target_industry}.com"
                 raw_leads = await scrape_domain_leads(
-                    domain_or_url=domain_target,
-                    industry="Tech & Business",
+                    domain_or_url=target_industry,
+                    industry="",
                     location=target_location,
                 )
                 source_status = "results" if raw_leads else "no_results"
+                if not raw_leads:
+                    source_message = (
+                        "No page could be fetched from that website (blocked, unreachable or not public)."
+                    )
             elif effective_platform == "indiamart":
                 raw_leads = await fetch_indiamart_leads(
                     query=target_industry,
@@ -217,6 +191,11 @@ Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce
                     "Fili will not label generic web or AI results as LinkedIn data."
                 )
     
+        except ValueError as exc:
+            if effective_platform != "domain_scraper":
+                raise
+            source_status = "invalid_target"
+            source_message = str(exc)
         except ProviderRequestError as exc:
             source_status = "provider_error"
             source_message = f"{exc.provider}: {exc.reason}"
@@ -271,6 +250,9 @@ Include fields: 'verified_email': true, 'technologies_used': ['AWS', 'Salesforce
                 "No usable records were returned by the selected source. "
                 "Check provider credentials, source coverage and query filters."
             )
+
+        if location_filter_note and not source_message:
+            source_message = location_filter_note
 
         diagnostics = {
             "provider": provider_name,

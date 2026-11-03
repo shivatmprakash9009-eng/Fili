@@ -163,7 +163,7 @@ Copy .env.example to .env and set FILI_DAILY_PROSPECTOR_ENABLED=true. Defaults a
 
 When live connectors return no results, LLM-generated or sample records are marked AI / MOCK · UNVERIFIED and Gmail/WhatsApp outreach actions are disabled. Live search results should still be reviewed before outreach. MX results are shown separately from mailbox verification.
 
-The dashboard binds to 127.0.0.1 by default. Do not expose its unauthenticated dashboard/API directly to the public internet; add authentication and network controls before remote deployment.
+The dashboard binds to 127.0.0.1 by default. Binding elsewhere requires `FILI_API_TOKEN`; with it set, every API call must also carry `X-Fili-User` (set by the Next.js proxy from a verified Firebase ID token), and leads, exports and campaign history are kept per user. The built-in single-page dashboard served at `/` is a local development tool and cannot send these headers; use the Next.js frontend for anything remote.
 
 ## 📜 License
 
@@ -173,13 +173,15 @@ MIT License — free to use, modify, and distribute.
 
 A new Next.js App Router frontend is being developed in [frontend/](frontend/README.md). It uses React + TypeScript, Motion animations, an electric-blue / monochrome interface, responsive navigation and a prospect detail drawer. The frontend proxies only allowlisted calls to the existing Python API.
 
-For local setup and Vercel configuration, see the [frontend guide](frontend/README.md). Authentication is intentionally deferred while Fili is in active development. The current Python engine still holds campaign data in memory. Multi-user identity, tenant isolation, persistent CRM storage, billing, audit logs and multi-instance scheduling are not yet implemented. This is a development-stage SaaS foundation, not yet ready for external customer data.
+For local setup and Vercel configuration, see the [frontend guide](frontend/README.md). The dashboard requires a Firebase sign-in (email accounts must verify their email). The `/api/fili/*` proxy verifies the Firebase ID token server-side (signature, issuer, audience, expiry) before forwarding the request with the shared `FILI_API_TOKEN` and the user's UID. Per-user campaign limits and per-user in-memory results are enforced by the Python engine; campaign history is stored in SQLite per user. Persistent shared CRM storage, billing, audit logs and multi-instance scheduling are not yet implemented, so run a single backend instance.
 
 
 ### Discovery integrity and accuracy controls
 
 The discovery engine is evidence-first:
 
+- Zero-API sources (GitHub, Hacker News, website extractor) return only what the source actually publishes. They never guess role e-mails, contact names, employee counts or addresses, and the strict city filter is skipped for them because they carry no address.
+- The website extractor crawls at most five public pages of one site, refuses private/internal addresses (including redirect targets), and reports an e-mail or phone only when it appears in the fetched HTML.
 - Apollo organization discovery uses Apollo's current mixed-company search endpoint. Organization search does not itself prove a named decision-maker, mailbox or direct phone number.
 - Google Maps results are treated as provider-supplied business listings. A search location is not accepted as proof of a result's address.
 - Strict country/state/city searches require address evidence that matches the selected city and state. Results with missing or mismatched location evidence are excluded.

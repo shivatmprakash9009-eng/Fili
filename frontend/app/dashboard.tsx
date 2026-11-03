@@ -6,14 +6,14 @@ import DeveloperPanel from "@/components/DeveloperPanel";
 import {
   Activity, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
   ChevronDown, ChevronRight, CircleAlert, Command, Download, ExternalLink,
-  Globe, LayoutDashboard, LoaderCircle, Mail, Menu, MoreHorizontal,
-  Plus, Rocket, Search, Settings2, ShieldCheck, Sparkles, Users, Workflow, X, Zap
+  Globe, LayoutDashboard, LoaderCircle, Mail, Menu,
+  LogOut, Plus, Rocket, Search, Settings2, ShieldCheck, Sparkles, Users, Workflow, X, Zap
 } from "lucide-react";
 import {
   AnimatePresence, motion, useReducedMotion
 } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { exportUrl, getApiStatus, isOutreachEligible, runCampaign, scanWebsite } from "@/lib/api";
+import { downloadExport, getApiStatus, isOutreachEligible, runCampaign, scanWebsite } from "@/lib/api";
 import type {
   ApiState, ApiStatus, CampaignPayload, CampaignResponse, Lead, NavItem
 } from "@/lib/types";
@@ -234,7 +234,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
   onSubmit: (payload: CampaignPayload) => void;
 }) {
   const [target,setTarget]=useState("SaaS & Cloud Software");
-  const [locationScope,setLocationScope]=useState<CampaignPayload["location_scope"]|null>(null);
+  const [locationScope,setLocationScope]=useState<NonNullable<CampaignPayload["location_scope"]>|null>(null);
   const [count,setCount]=useState("10");
   const [name,setName]=useState("New campaign");
   const [platform,setPlatform]=useState<CampaignPayload["platform"]>("google_maps");
@@ -258,7 +258,7 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
               <div><span className="section-kicker">NEW WORKFLOW</span><h2 id="campaign-dialog-title">Launch a campaign</h2></div>
               <button type="button" className="icon-button modal-close" onClick={onClose} disabled={busy} aria-label="Close"><X size={18}/></button>
             </div>
-            <form onSubmit={(event)=>{event.preventDefault();onSubmit({target,location:locationScope ? `${locationScope.city}, ${locationScope.state}, ${locationScope.country}` : "Global",location_scope:locationScope||{country:"Global",country_code:"GL",state:"Global",state_code:"GL",city:"Global"},max_leads:Number(count),campaign_name:name,platform});}} className="campaign-form">
+            <form onSubmit={(event)=>{event.preventDefault();onSubmit({target,location:locationScope ? `${locationScope.city}, ${locationScope.state}, ${locationScope.country}` : "Global",...(locationScope?{location_scope:locationScope}:{}),max_leads:Number(count),campaign_name:name,platform});}} className="campaign-form">
               <label className="field-group">
                 <span>Campaign name</span>
                 <input value={name} onChange={(e)=>setName(e.target.value)} maxLength={100} required/>
@@ -421,7 +421,7 @@ function ProspectDrawer({ lead, scanning, onClose, onScan }: {
   );
 }
 
-function Dashboard() {
+function Dashboard({ userName, userEmail, onSignOut }: { userName: string; userEmail: string; onSignOut: () => void }) {
   const reducedMotion=useReducedMotion();
   const [activeNav,setActiveNav]=useState<NavItem>("overview");
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
@@ -535,8 +535,6 @@ function Dashboard() {
   },[leads,query]);
 
   const outreachCount=leads.filter(isOutreachEligible).length;
-  const mxCount=leads.filter((lead)=>lead.email_verification?.mx_found).length;
-  const techCount=leads.filter((lead)=>(lead.tech_stack||[]).length>0).length;
   const locationVerified=leads.filter((lead)=>lead.location_verified).length;
   const contactVerified=leads.filter((lead)=>lead.contact_verified).length;
   const avgEvidence=leads.length ? Math.round(leads.reduce((total,lead)=>total+(lead.discovery_quality_score||0),0)/leads.length) : 0;
@@ -551,7 +549,7 @@ function Dashboard() {
   const openCampaign=()=>{setCampaignError("");setCampaignOpen(true);};
   const exportFile=(kind:"csv"|"xlsx")=>{
     if(leads.length===0){showNotice("Run a campaign before exporting prospects.");return;}
-    window.location.assign(exportUrl(kind));
+    downloadExport(kind).catch((error)=>showNotice(error instanceof Error?error.message:"Export failed"));
   };
 
   return (
@@ -608,9 +606,9 @@ function Dashboard() {
             <button type="button" className="engine-link" onClick={()=>setActiveNav("settings")}>Connection settings <ArrowUpRight size={13}/></button>
           </div>
           <div className="sidebar-profile">
-            <div className="profile-avatar">F</div>
-            <div><strong>Workspace owner</strong><small>Fili account</small></div>
-            <MoreHorizontal size={18}/>
+            <div className="profile-avatar">{(userName||userEmail||"F").slice(0,1).toUpperCase()}</div>
+            <div><strong>{userName||"Fili account"}</strong><small>{userEmail}</small></div>
+            <button type="button" className="icon-button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={16}/></button>
           </div>
         </div>
       </motion.aside>
@@ -631,7 +629,7 @@ function Dashboard() {
             <button type="button" className="icon-button notification-button" onClick={()=>showNotice(apiStatus?.daily_schedule_enabled?"Daily prospector is active.":"No new activity")} aria-label="Notifications">
               <Bell size={17}/><span className="notification-dot"/>
             </button>
-            <button type="button" className="topbar-avatar" onClick={()=>setActiveNav("settings")} aria-label="Workspace settings">F</button>
+            <button type="button" className="topbar-avatar" onClick={()=>setActiveNav("settings")} aria-label="Workspace settings">{(userName||userEmail||"F").slice(0,1).toUpperCase()}</button>
           </div>
         </header>
 

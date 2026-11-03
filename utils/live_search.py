@@ -14,7 +14,7 @@ import os
 import random
 import re
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote_plus, unquote, urlsplit
 
 import httpx
 
@@ -290,8 +290,6 @@ async def fetch_indiamart_leads(
     if os.getenv("FILI_ENABLE_INDIAMART_SCRAPER", "false").casefold() not in {"1", "true", "yes"}:
         logger.info("IndiaMART HTML connector is disabled; enable only after policy review.")
         return []
-    from urllib.parse import quote_plus
-
     url = f"https://dir.indiamart.com/search.mp?ss={quote_plus(f'{query} {location}'.strip())}"
     try:
         async with httpx.AsyncClient(timeout=API_TIMEOUT, follow_redirects=True) as client:
@@ -341,8 +339,6 @@ async def fetch_duckduckgo_leads(
     platform_label: str = "Web Search",
 ) -> list[dict[str, Any]]:
     """Fallback web search. Search snippets are discovery hints, not verified leads."""
-    from urllib.parse import quote_plus
-
     full_query = f"{query} companies in {location} official website".strip()
     try:
         async with httpx.AsyncClient(timeout=API_TIMEOUT, follow_redirects=True) as client:
@@ -407,97 +403,118 @@ async def fetch_github_tech_leads(
     location: str,
     max_leads: int = 5,
 ) -> list[dict[str, Any]]:
-    """Fetch tech startups & open-source teams from GitHub public API (Zero API Key required)."""
-    url = f"https://api.github.com/search/repositories?q={quote_plus(industry)}+sort:stars&per_page={min(max_leads, 10)}"
-    headers = {
-        "User-Agent": "Fili-MultiAgent-System/1.0",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url, headers=headers)
-        if resp.status_code == 200:
-            data = resp.json()
-            items = data.get("items", [])
-            leads = []
-            for item in items:
-                owner = item.get("owner", {})
-                org_name = owner.get("login", "TechStartup")
-                html_url = item.get("html_url", "")
-                homepage = item.get("homepage") or f"https://github.com/{org_name}"
-                description = item.get("description") or f"Building {industry} solutions"
-                
-                leads.append({
-                    "company_name": f"{org_name.capitalize()} Tech",
-                    "website": homepage,
-                    "industry": industry,
-                    "location": location,
-                    "contact_name": "Open Source Maintainer",
-                    "contact_title": "Lead Developer / Founder",
-                    "contact_email": f"hello@{org_name.lower()}.io",
-                    "github_repo": html_url,
-                    "company_size": "10-50 employees",
-                    "pain_points": [description[:80], "scaling developer tools and infrastructure"],
-                    "platform": "GitHub Open Source Ecosystem (Zero-API)",
-                    "is_live_data": True,
-                })
-            logger.info(f"GitHub search returned {len(leads)} tech leads.")
-            return leads
-    except Exception as exc:
-        logger.error(f"Error fetching GitHub tech leads: {exc}")
-    return []
+    """Find organizations behind popular public GitHub repositories (no API key).
+
+    Only fields GitHub actually returns are kept. GitHub does not provide a
+    contact person, email, employee count or address, so those stay empty.
+    ``location`` is accepted for interface symmetry but is never claimed as a
+    fact about a result.
+    """
+    limit = max(1, min(int(max_leads), 30))
+    data = await _request_json(
+        "GET",
+        "https://api.github.com/search/repositories",
+        params={"q": industry, "sort": "stars", "order": "desc", "per_page": limit},
+        headers={
+            "User-Agent": "Fili-Prospecting/1.0",
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    items = data.get("items", [])
+    leads: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    if not isinstance(items, list):
+        return leads
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        owner = item.get("owner") if isinstance(item.get("owner"), dict) else {}
+        login = str(owner.get("login") or "").strip()
+        if not login or login.casefold() in seen:
+            continue
+        seen.add(login.casefold())
+        repo_url = str(item.get("html_url") or "")
+        homepage = _website(item.get("homepage"))
+        profile_url = str(owner.get("html_url") or f"https://github.com/{login}")
+        leads.append({
+            "company_name": login,
+            "website": homepage,
+            "industry": industry,
+            "location": "",
+            "platform": "GitHub public repositories",
+            "source_type": "provider_api",
+            "source_id": f"github_repo:{item.get('id')}" if item.get("id") else "",
+            "source_url": repo_url or profile_url,
+            "github_repo": repo_url,
+            "github_owner_type": str(owner.get("type") or ""),
+            "key_details": str(item.get("description") or "")[:500],
+            "is_live_data": True,
+            "contact_name": "",
+            "contact_title": "",
+            "contact_email": "",
+            "phone": "",
+            "contact_verified": False,
+        })
+        if len(leads) >= limit:
+            break
+    logger.info("GitHub search returned %d owner records", len(leads))
+    return leads
 
 
 async def fetch_hacker_news_leads(
     industry: str,
     max_leads: int = 5,
 ) -> list[dict[str, Any]]:
-    """Fetch recently launched startups & tech companies from Hacker News public Algolia API (Zero API Key required)."""
-    url = f"https://hn.algolia.com/api/v1/search?query={quote_plus(industry)}&tags=show_hn"
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url)
-        if resp.status_code == 200:
-            data = resp.json()
-            hits = data.get("hits", [])
-            leads = []
-            seen = set()
-            for hit in hits:
-                title = hit.get("title", "")
-                url_link = hit.get("url", "")
-                author = hit.get("author", "founder")
-                if not url_link or "news.ycombinator.com" in url_link:
-                    continue
-                
-                domain_match = re.search(r"https?://(?:www\.)?([a-zA-Z0-9.-]+)", url_link)
-                if not domain_match:
-                    continue
-                domain = domain_match.group(1)
-                if domain in seen:
-                    continue
-                seen.add(domain)
+    """Find products launched on Show HN via the public Algolia API (no API key).
 
-                company_name = title.replace("Show HN: ", "").split(" – ")[0].split(" - ")[0].strip()
-                if len(company_name) > 30:
-                    company_name = company_name[:30]
-
-                leads.append({
-                    "company_name": company_name or "HN Startup",
-                    "website": url_link,
-                    "industry": industry,
-                    "location": "Global / Remote",
-                    "contact_name": author.capitalize(),
-                    "contact_title": "Founder / Maker",
-                    "contact_email": f"founders@{domain}",
-                    "company_size": "1-20 employees",
-                    "pain_points": [f"early-stage growth for {industry}", "initial customer acquisition"],
-                    "platform": "Hacker News Startup Launch (Zero-API)",
-                    "is_live_data": True,
-                })
-                if len(leads) >= max_leads:
-                    break
-            logger.info(f"Hacker News search returned {len(leads)} startup leads.")
-            return leads
-    except Exception as exc:
-        logger.error(f"Error fetching Hacker News leads: {exc}")
-    return []
+    The post title, URL and author handle are provider-supplied. A Hacker News
+    username is not a verified person or email, so contact fields stay empty.
+    """
+    limit = max(1, min(int(max_leads), 30))
+    data = await _request_json(
+        "GET",
+        "https://hn.algolia.com/api/v1/search",
+        params={"query": industry, "tags": "show_hn", "hitsPerPage": min(limit * 3, 60)},
+        headers={"User-Agent": "Fili-Prospecting/1.0", "Accept": "application/json"},
+    )
+    hits = data.get("hits", [])
+    leads: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    if not isinstance(hits, list):
+        return leads
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        link = _website(hit.get("url"))
+        host = urlsplit(link).hostname.casefold().removeprefix("www.") if link else ""
+        if not host or host.endswith("ycombinator.com") or host in seen:
+            continue
+        seen.add(host)
+        title = _clean_company_name(hit.get("title"))
+        title = re.sub(r"^show hn:\s*", "", title, flags=re.IGNORECASE)
+        name = re.split(r"\s+[\u2013\u2014-]\s+|\s*:\s+", title, maxsplit=1)[0].strip()[:80]
+        if not name:
+            continue
+        object_id = str(hit.get("objectID") or "")
+        leads.append({
+            "company_name": name,
+            "website": link,
+            "industry": industry,
+            "location": "",
+            "platform": "Hacker News Show HN",
+            "source_type": "provider_api",
+            "source_id": f"hn:{object_id}" if object_id else "",
+            "source_url": f"https://news.ycombinator.com/item?id={object_id}" if object_id else link,
+            "hn_author": str(hit.get("author") or ""),
+            "key_details": title[:500],
+            "is_live_data": True,
+            "contact_name": "",
+            "contact_title": "",
+            "contact_email": "",
+            "phone": "",
+            "contact_verified": False,
+        })
+        if len(leads) >= limit:
+            break
+    logger.info("Hacker News search returned %d launch records", len(leads))
+    return leads

@@ -21,6 +21,9 @@ import os
 import re
 import sys
 import threading
+import time
+from collections import OrderedDict, deque
+from contextlib import contextmanager
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,25 +42,108 @@ from agents.content_writer import ContentWriterAgent
 from agents.email_outreach import EmailOutreachAgent
 from agents.response_analyzer import ResponseAnalyzerAgent
 from agents.reporting import ReportingAgent
-from utils.database import DatabaseManager
+from utils.database import LOCAL_OWNER, DatabaseManager
 from utils.prospecting import (
     csv_export, enrich_lead, excel_export, fetch_tech_stack, validate_public_http_url,
 )
 from utils.scheduler import start_daily_prospector
 
-# Global state for dashboard
+# Global (non user-specific) dashboard state: scheduler status only.
 STATE: dict[str, Any] = {
-    "latest_report": None,
-    "latest_leads": [],
-    "latest_content": [],
-    "campaign_running": False,
-    "last_campaign_name": "None",
     "last_daily_run": None,
     "daily_schedule_enabled": False,
     "daily_schedule_error": None,
 }
-CAMPAIGN_LOCK = threading.Lock()
 SCHEDULER = None
+SCHEDULER_OWNER = "scheduler"
+USER_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}")
+MAX_TRACKED_USERS = 200
+
+_GUARD = threading.Lock()
+_USER_STATE: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
+_USER_LOCKS: dict[str, threading.Lock] = {}
+_RATE_EVENTS: dict[tuple[str, str], deque] = {}
+
+
+def _env_int(name: str, default: int, low: int, high: int) -> int:
+    try:
+        return max(low, min(int(os.getenv(name, str(default))), high))
+    except ValueError:
+        return default
+
+
+CAMPAIGN_SLOTS = threading.BoundedSemaphore(_env_int("FILI_MAX_CONCURRENT_CAMPAIGNS", 3, 1, 20))
+
+
+def user_state(owner: str) -> dict[str, Any]:
+    """Per-user campaign results. Users never see each other's leads."""
+    with _GUARD:
+        state = _USER_STATE.get(owner)
+        if state is None:
+            state = {
+                "latest_report": None, "latest_leads": [], "latest_content": [],
+                "last_campaign_name": "None", "campaign_running": False,
+            }
+            _USER_STATE[owner] = state
+            while len(_USER_STATE) > MAX_TRACKED_USERS:
+                _USER_STATE.popitem(last=False)
+        else:
+            _USER_STATE.move_to_end(owner)
+        return state
+
+
+def _user_lock(owner: str) -> threading.Lock:
+    with _GUARD:
+        if len(_USER_LOCKS) > 1000:
+            for key in [k for k, lock in _USER_LOCKS.items() if not lock.locked()]:
+                del _USER_LOCKS[key]
+        return _USER_LOCKS.setdefault(owner, threading.Lock())
+
+
+def rate_limited(owner: str, bucket: str, limit: int, window: float = 3600.0) -> int:
+    """Sliding-window limiter. Returns 0 when allowed (and records the call), else seconds to wait."""
+    now = time.monotonic()
+    with _GUARD:
+        events = _RATE_EVENTS.setdefault((owner, bucket), deque())
+        while events and now - events[0] >= window:
+            events.popleft()
+        if len(events) >= limit:
+            return max(1, int(window - (now - events[0])) + 1)
+        events.append(now)
+        return 0
+
+
+class CampaignBusy(Exception):
+    """Raised when a campaign cannot start right now."""
+
+    def __init__(self, message: str, status: HTTPStatus) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+@contextmanager
+def campaign_slot(owner: str):
+    """One campaign at a time per user, and a global cap on concurrent campaigns."""
+    lock = _user_lock(owner)
+    if not lock.acquire(blocking=False):
+        raise CampaignBusy("A campaign is already running for your account. Retry after it finishes.", HTTPStatus.CONFLICT)
+    if not CAMPAIGN_SLOTS.acquire(blocking=False):
+        lock.release()
+        raise CampaignBusy("Fili is at capacity right now. Retry in a minute.", HTTPStatus.SERVICE_UNAVAILABLE)
+    state = user_state(owner)
+    state["campaign_running"] = True
+    try:
+        yield
+    finally:
+        state["campaign_running"] = False
+        CAMPAIGN_SLOTS.release()
+        lock.release()
+
+
+ALLOWED_PLATFORMS = {
+    "apollo", "google_maps", "indiamart", "linkedin", "web_search",
+    "github", "hacker_news", "domain_scraper",
+}
 
 
 def run_async(coro):
@@ -77,6 +163,7 @@ async def execute_campaign(
     campaign_name: str,
     platform: str = "apollo",
     location_scope: dict[str, Any] | None = None,
+    owner: str = LOCAL_OWNER,
 ) -> dict[str, Any]:
     """Execute lead generation pipeline with selected platform & geo."""
     settings = Settings.from_env()
@@ -134,45 +221,52 @@ async def execute_campaign(
         content_items = content_res.data.get("content_items", []) if content_res else []
         email_res = orchestrator.get_result(results[2].task_id) if len(results) > 2 else None
 
-        # Merge generated outreach content. Email agent remains in dry-run mode.
+        # Merge generated outreach drafts. Quality is only reported when the writer computed it.
         for i, lead in enumerate(leads):
             if i < len(content_items):
-                item = content_items[i]
-                best = item.get("best_content", {})
-                lead["email_subject"] = best.get("subject", f"Partnership inquiry for {lead.get('company_name', '')}")
+                best = content_items[i].get("best_content", {})
+                lead["email_subject"] = best.get("subject") or f"Partnership inquiry for {lead.get('company_name', '')}"
                 lead["email_body"] = best.get("body", "")
-                lead["email_quality"] = best.get("quality_score", 9.2)
+                if best.get("quality_score") is not None:
+                    lead["email_quality"] = best["quality_score"]
             else:
                 lead["email_subject"] = f"Opportunity for {lead.get('company_name', '')}"
-                lead["email_body"] = f"Hi {lead.get('contact_name', 'there')},\n\nI wanted to connect with {lead.get('company_name', '')}."
-                lead["email_quality"] = 8.5
+                lead["email_body"] = f"Hi {lead.get('contact_name') or 'there'},\n\nI wanted to connect with {lead.get('company_name', '')}."
 
-        leads = await asyncio.gather(
+        leads = list(await asyncio.gather(
             *(asyncio.to_thread(enrich_lead, lead, True) for lead in leads)
-        )
-        STATE["latest_leads"] = leads
-        STATE["latest_content"] = content_items
-        STATE["latest_report"] = report_res.data if report_res else {}
-        STATE["last_campaign_name"] = campaign_name
+        ))
+        state = user_state(owner)
+        state["latest_leads"] = leads
+        state["latest_content"] = content_items
+        state["latest_report"] = report_res.data if report_res else {}
+        state["last_campaign_name"] = campaign_name
         email_activity = email_res.data if email_res else {"sent": 0, "dry_run": True}
 
-        # Persist to SQLite Database
+        # Persist to SQLite without blocking the event loop.
         try:
-            db = DatabaseManager()
-            db.save_campaign_results(
+            await asyncio.to_thread(
+                DatabaseManager().save_campaign_results,
                 campaign_name=campaign_name,
                 target_industry=target,
                 target_location=location,
                 platform=platform,
                 leads=leads,
                 content_list=content_items,
+                owner_uid=owner,
             )
         except Exception as db_exc:
             logging.getLogger("dashboard").error(f"Failed to persist campaign to DB: {db_exc}")
+        first_result = leads_res.data if leads_res else {}
         return {
             "success": True, "leads": leads, "content": content_items,
-            "report": STATE["latest_report"], "email_activity": email_activity,
+            "report": state["latest_report"], "email_activity": email_activity,
             "email_dry_run": True,
+            "provider": first_result.get("provider"),
+            "source_status": first_result.get("source_status"),
+            "message": first_result.get("message", ""),
+            "diagnostics": first_result.get("diagnostics"),
+            "location_filter_applied": first_result.get("location_filter_applied", False),
         }
     finally:
         await orchestrator.shutdown_all()
@@ -205,7 +299,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Antigravity Multi-Agent System</title>
+  <title>Fili Prospecting Dashboard</title>
   <!-- Geist Typography -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-sans/style.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-mono/style.css">
@@ -452,7 +546,7 @@ HTML_PAGE = """<!DOCTYPE html>
           <div id="kpiSent" class="text-2xl font-bold text-white mt-1">--</div>
         </div>
         <div class="card-mono p-4 rounded-lg text-center">
-          <div class="text-xs font-mono text-[#737373]">QUALITY SCORE</div>
+          <div class="text-xs font-mono text-[#737373]">EVIDENCE SCORE</div>
           <div id="kpiQuality" class="text-2xl font-bold text-white mt-1">--</div>
         </div>
       </div>
@@ -466,7 +560,7 @@ HTML_PAGE = """<!DOCTYPE html>
                 <th class="py-3 px-4">Company & Platform</th>
                 <th class="py-3 px-4">Contact Person</th>
                 <th class="py-3 px-4">Location</th>
-                <th class="py-3 px-4">Score</th>
+                <th class="py-3 px-4">Evidence</th>
                 <th class="py-3 px-4 text-right">Actions (Direct Gmail)</th>
               </tr>
             </thead>
@@ -599,18 +693,18 @@ HTML_PAGE = """<!DOCTYPE html>
         
         resContainer.innerHTML = `
           <div class="flex items-center justify-between border-b border-[#1f1f1f] pb-2">
-            <span class="text-white">INTENT: <b class="underline underline-offset-4">${data.category.toUpperCase()}</b></span>
-            <span class="text-[#888888]">SENTIMENT: ${data.sentiment.label.toUpperCase()} (${(data.sentiment.confidence*100).toFixed(0)}%)</span>
+            <span class="text-white">INTENT: <b class="underline underline-offset-4">${escapeHtml(String(data.category).toUpperCase())}</b></span>
+            <span class="text-[#888888]">SENTIMENT: ${escapeHtml(String(data.sentiment.label).toUpperCase())} (${(data.sentiment.confidence*100).toFixed(0)}%)</span>
           </div>
-          <div class="mt-1"><span class="text-[#737373]">AUTONOMOUS NEXT STEP:</span> <span class="text-white">${data.next_action}</span></div>
+          <div class="mt-1"><span class="text-[#737373]">AUTONOMOUS NEXT STEP:</span> <span class="text-white">${escapeHtml(data.next_action)}</span></div>
           <div class="mt-1"><span class="text-[#737373]">RECOMMENDED ACTIONS:</span>
             <ul class="list-disc list-inside text-[#a3a3a3] mt-1 space-y-0.5">
-              ${data.action_items.map(a => `<li>${a}</li>`).join('')}
+              ${data.action_items.map(a => `<li>${escapeHtml(a)}</li>`).join('')}
             </ul>
           </div>
         `;
       } catch (err) {
-        resContainer.innerHTML = `<span class="text-white font-mono">Analysis error: ${err}</span>`;
+        resContainer.textContent = 'Analysis error: ' + err;
       }
     }
 
@@ -642,14 +736,14 @@ HTML_PAGE = """<!DOCTYPE html>
         }
         const data = await resp.json();
         if (data.error) {
-          statusDiv.innerHTML = `<span class="text-white">Error: ${data.error}</span>`;
+          statusDiv.textContent = 'Error: ' + data.error;
           return;
         }
         currentLeads = data.leads || [];
         renderCampaign(data);
         statusDiv.innerHTML = '<span class="text-white font-mono">✓ Pipeline completed! Click "Send via Gmail" on any lead below.</span>';
       } catch (err) {
-        statusDiv.innerHTML = `<span class="text-white">Failed: ${err.message || err}</span>`;
+        statusDiv.textContent = 'Failed: ' + (err.message || err);
       } finally {
         btn.disabled = false;
         btn.innerText = "Start Autonomous Pipeline";
@@ -668,12 +762,18 @@ HTML_PAGE = """<!DOCTYPE html>
       document.getElementById('kpiLeads').innerText = summary.total_leads_found ?? leads.length;
       document.getElementById('kpiContent').innerText = summary.content_pieces_generated ?? leads.length;
       document.getElementById('kpiSent').innerText = (activity.sent ?? 0) + ' preview';
-      document.getElementById('kpiQuality').innerText = (quality.average_score ?? '—') + '/10';
+      document.getElementById('kpiQuality').innerText = (quality.average_score ?? '—') + '/100';
       document.getElementById('campaignBadge').innerText = report.report_title || 'Active';
 
       const tbody = document.getElementById('leadsTableBody');
       if (leads.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-[#525252] font-mono">No leads found.</td></tr>';
+        const emptyRow = document.createElement('tr');
+        const emptyCell = document.createElement('td');
+        emptyCell.colSpan = 5;
+        emptyCell.className = 'py-8 text-center text-[#525252] font-mono';
+        emptyCell.textContent = data.message || 'No leads found.';
+        emptyRow.appendChild(emptyCell);
+        tbody.replaceChildren(emptyRow);
         return;
       }
 
@@ -685,8 +785,8 @@ HTML_PAGE = """<!DOCTYPE html>
           .concat('<button onclick="viewDraft(' + idx + ')" class="px-2.5 py-1.5 text-xs bg-[#111111] text-[#ededed] border border-[#262626] rounded">View Draft</button>')
           .concat('<button onclick="viewFollowups(' + idx + ')" class="px-2.5 py-1.5 text-xs bg-[#111111] text-[#ededed] border border-[#262626] rounded">Follow-ups</button>')
           .concat(l.website ? '<button onclick="scanTechStack(' + idx + ')" class="px-2.5 py-1.5 text-xs bg-[#111111] text-[#ededed] border border-[#262626] rounded">Scan Tech</button>' : '')
-          .concat(l.outreach_enabled !== false && l.contact_email ? '<button onclick="sendViaGmail(' + idx + ')" class="px-3 py-1.5 text-xs bg-white text-black font-semibold rounded">Gmail</button>' : '')
-          .concat(l.outreach_enabled !== false && l.whatsapp_url ? '<a href="' + escapeHtml(l.whatsapp_url) + '" target="_blank" rel="noopener noreferrer" class="inline-block px-3 py-1.5 text-xs bg-[#171717] text-white border border-[#333333] rounded">WhatsApp</a>' : '');
+          .concat(l.outreach_enabled === true && l.contact_email ? '<button onclick="sendViaGmail(' + idx + ')" class="px-3 py-1.5 text-xs bg-white text-black font-semibold rounded">Gmail</button>' : '')
+          .concat(l.outreach_enabled === true && l.whatsapp_url ? '<a href="' + escapeHtml(l.whatsapp_url) + '" target="_blank" rel="noopener noreferrer" class="inline-block px-3 py-1.5 text-xs bg-[#171717] text-white border border-[#333333] rounded">WhatsApp</a>' : '');
         return '<tr class="hover:bg-[#111111] transition">'
           + '<td class="py-3.5 px-4 font-medium text-white">' + escapeHtml(l.company_name || 'Unknown company')
           + '<div class="flex flex-wrap items-center gap-2 mt-1">'
@@ -700,7 +800,7 @@ HTML_PAGE = """<!DOCTYPE html>
           + (l.phone ? '<br><span class="text-[#666666] font-mono text-[10px]">' + escapeHtml(l.phone) + '</span>' : '')
           + '<br><span class="text-[10px] text-[#777777]">Domain check: ' + escapeHtml(mx) + ' · mailbox not verified</span></td>'
           + '<td class="py-3.5 px-4 text-[#a3a3a3] font-mono">' + escapeHtml(l.location || '—') + '</td>'
-          + '<td class="py-3.5 px-4 font-mono font-bold text-white"><span class="px-2 py-0.5 rounded bg-[#171717] border border-[#262626]">' + escapeHtml(l.relevance_score ?? '—') + '/10</span></td>'
+          + '<td class="py-3.5 px-4 font-mono font-bold text-white"><span class="px-2 py-0.5 rounded bg-[#171717] border border-[#262626]">' + escapeHtml(l.discovery_quality_score ?? '—') + '/100</span></td>'
           + '<td class="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">' + actions.join('') + '</td></tr>';
       }).join('');
     }
@@ -737,7 +837,7 @@ HTML_PAGE = """<!DOCTYPE html>
           } catch (_) { copy.textContent = 'Copy unavailable'; }
         };
         actions.appendChild(copy);
-        if (lead.outreach_enabled !== false && lead.contact_email) {
+        if (lead.outreach_enabled === true && lead.contact_email) {
           const open = document.createElement('button');
           open.className = 'px-3 py-1.5 rounded bg-white text-black text-xs font-semibold';
           open.textContent = 'Open email draft';
@@ -788,7 +888,7 @@ HTML_PAGE = """<!DOCTYPE html>
     function sendViaGmail(idx) {
       const lead = currentLeads[idx];
       if (!lead) return;
-      if (lead.outreach_enabled === false) {
+      if (lead.outreach_enabled !== true) {
         document.getElementById('campaignStatus').textContent = 'AI-generated preview only: contact details are unverified and outreach is disabled.';
         return;
       }
@@ -870,6 +970,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
         return False
 
+    def _owner(self) -> str | None:
+        """Identity of the caller. With FILI_API_TOKEN set, the trusted proxy must forward X-Fili-User."""
+        if not os.getenv("FILI_API_TOKEN", "").strip():
+            return LOCAL_OWNER
+        supplied = self.headers.get("X-Fili-User", "").strip()
+        return supplied if USER_ID_RE.fullmatch(supplied) else None
+
+    def _require_owner(self) -> str | None:
+        owner = self._owner()
+        if owner is None:
+            self.send_json({"error": "Missing or invalid user identity."}, HTTPStatus.BAD_REQUEST)
+        return owner
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/") and not self._require_api_auth():
@@ -884,16 +997,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/status":
             jobs = SCHEDULER.get_jobs() if SCHEDULER else []
             next_run = jobs[0].next_run_time.isoformat() if jobs and jobs[0].next_run_time else None
+            owner = self._owner()
             self.send_json({
                 "online": True, "agents_count": 5,
-                "latest_campaign": STATE["last_campaign_name"],
+                "latest_campaign": user_state(owner)["last_campaign_name"] if owner else "None",
                 "daily_schedule_enabled": bool(SCHEDULER),
                 "daily_schedule_time": os.getenv("FILI_DAILY_PROSPECTOR_TIME", "09:00"),
                 "daily_schedule_timezone": os.getenv("FILI_DAILY_PROSPECTOR_TIMEZONE", "Asia/Kolkata"),
                 "next_run": next_run, "last_daily_run": STATE["last_daily_run"],
             })
         elif parsed.path in {"/api/export.csv", "/api/export.xlsx"}:
-            leads = STATE["latest_leads"]
+            owner = self._require_owner()
+            if owner is None:
+                return
+            leads = user_state(owner)["latest_leads"]
             if not leads:
                 self.send_json({"error": "No campaign leads are available to export."}, HTTPStatus.CONFLICT)
                 return
@@ -935,46 +1052,68 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
 
         try:
+            owner = self._require_owner()
+            if owner is None:
+                return
             if parsed.path == "/api/run-campaign":
                 target = str(data.get("target", "SaaS")).strip()[:160]
-                location = str(data.get("location", "India")).strip()[:160]
-                max_leads = max(1, min(int(data.get("max_leads", 5)), 25))
+                try:
+                    max_leads = max(1, min(int(data.get("max_leads", 5)), 25))
+                except (TypeError, ValueError):
+                    max_leads = 5
                 campaign_name = str(data.get("campaign_name", "Fili Campaign")).strip()[:100]
                 platform = str(data.get("platform", "apollo")).lower()
-                if platform not in {"apollo", "google_maps", "indiamart", "linkedin", "web_search"}:
+                if platform not in ALLOWED_PLATFORMS:
                     self.send_json({"error": "Unsupported prospecting platform."}, HTTPStatus.BAD_REQUEST)
                     return
                 location_scope = data.get("location_scope")
-                if not isinstance(location_scope, dict) or not all(str(location_scope.get(key, "")).strip() for key in ("country", "country_code", "state", "state_code", "city")):
-                    self.send_json({"error": "Select a valid country, state and city before starting discovery."}, HTTPStatus.BAD_REQUEST)
-                    return
-                if not re.fullmatch(r"[A-Z]{2}", str(location_scope.get("country_code", ""))) or not re.fullmatch(r"[A-Z0-9-]{1,8}", str(location_scope.get("state_code", ""))):
-                    self.send_json({"error": "The selected country or state code is invalid."}, HTTPStatus.BAD_REQUEST)
-                    return
-                location = ", ".join(str(location_scope[key]).strip() for key in ("city", "state", "country"))
+                if location_scope is not None:
+                    if not isinstance(location_scope, dict) or not all(str(location_scope.get(key, "")).strip() for key in ("country", "country_code", "state", "state_code", "city")):
+                        self.send_json({"error": "Select a valid country, state and city before starting discovery."}, HTTPStatus.BAD_REQUEST)
+                        return
+                    if not re.fullmatch(r"[A-Z]{2}", str(location_scope.get("country_code", ""))) or not re.fullmatch(r"[A-Z0-9-]{1,8}", str(location_scope.get("state_code", ""))):
+                        self.send_json({"error": "The selected country or state code is invalid."}, HTTPStatus.BAD_REQUEST)
+                        return
+                    location = ", ".join(str(location_scope[key]).strip() for key in ("city", "state", "country"))
+                else:
+                    location = str(data.get("location", "")).strip()[:160]
                 if not target or not location or not campaign_name:
                     self.send_json({"error": "Target, location and campaign name are required."}, HTTPStatus.BAD_REQUEST)
                     return
-                if not CAMPAIGN_LOCK.acquire(blocking=False):
-                    self.send_json({"error": "A campaign is already running. Retry after it finishes."}, HTTPStatus.CONFLICT)
+                retry_after = rate_limited(owner, "campaign", _env_int("FILI_CAMPAIGNS_PER_HOUR", 20, 1, 1000))
+                if retry_after:
+                    self.send_json({"error": "Campaign limit reached. Try again later."}, HTTPStatus.TOO_MANY_REQUESTS,
+                                   headers={"Retry-After": str(retry_after)})
                     return
-                STATE["campaign_running"] = True
                 try:
-                    result = run_async(execute_campaign(target, location, max_leads, campaign_name, platform, location_scope))
-                    self.send_json(result)
-                finally:
-                    STATE["campaign_running"] = False
-                    CAMPAIGN_LOCK.release()
+                    with campaign_slot(owner):
+                        result = run_async(execute_campaign(
+                            target, location, max_leads, campaign_name, platform, location_scope, owner,
+                        ))
+                except CampaignBusy as busy:
+                    self.send_json({"error": str(busy)}, busy.status)
+                    return
+                self.send_json(result)
 
             elif parsed.path == "/api/analyze-reply":
                 reply_text = str(data.get("reply_text", "")).strip()
                 if not reply_text or len(reply_text) > 10_000:
                     self.send_json({"error": "Reply text must contain 1–10,000 characters."}, HTTPStatus.BAD_REQUEST)
                     return
+                retry_after = rate_limited(owner, "reply", _env_int("FILI_REPLIES_PER_HOUR", 60, 1, 5000))
+                if retry_after:
+                    self.send_json({"error": "Reply analysis limit reached. Try again later."}, HTTPStatus.TOO_MANY_REQUESTS,
+                                   headers={"Retry-After": str(retry_after)})
+                    return
                 result = run_async(analyze_single_reply(reply_text))
                 self.send_json(result)
 
             elif parsed.path == "/api/scan-tech":
+                retry_after = rate_limited(owner, "scan", _env_int("FILI_SCANS_PER_HOUR", 120, 1, 5000))
+                if retry_after:
+                    self.send_json({"error": "Website scan limit reached. Try again later."}, HTTPStatus.TOO_MANY_REQUESTS,
+                                   headers={"Retry-After": str(retry_after)})
+                    return
                 safe_url = validate_public_http_url(data.get("url", ""))
                 result = fetch_tech_stack(safe_url)
                 self.send_json(result)
@@ -987,11 +1126,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             logging.exception("Dashboard API request failed")
             self.send_json({"error": "The request could not be completed.", "success": False}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def send_json(self, data: Any, status: int = HTTPStatus.OK) -> None:
-        payload = json.dumps(data).encode("utf-8")
+    def send_json(self, data: Any, status: int = HTTPStatus.OK, headers: dict[str, str] | None = None) -> None:
+        payload = json.dumps(data, default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         try:
             self.wfile.write(payload)
@@ -1007,28 +1149,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 def run_daily_prospecting() -> None:
     """Run a scheduled discovery pass. Email stays in the pipeline's dry-run mode."""
-    if not CAMPAIGN_LOCK.acquire(blocking=False):
-        logging.warning("Daily prospector skipped because another campaign is running.")
-        return
-    STATE["campaign_running"] = True
     try:
-        target = os.getenv("FILI_DAILY_PROSPECTOR_TARGET", "SaaS companies")
-        location = os.getenv("FILI_DAILY_PROSPECTOR_LOCATION", "India")
-        try:
-            count = max(1, min(int(os.getenv("FILI_DAILY_PROSPECTOR_MAX_LEADS", "10")), 25))
-        except ValueError:
-            count = 10
-        result = run_async(execute_campaign(target, location, count, "Daily Prospector", "web_search"))
-        STATE["last_daily_run"] = {
-            "success": bool(result.get("success")),
-            "lead_count": len(result.get("leads", [])),
-        }
+        with campaign_slot(SCHEDULER_OWNER):
+            target = os.getenv("FILI_DAILY_PROSPECTOR_TARGET", "SaaS companies")
+            location = os.getenv("FILI_DAILY_PROSPECTOR_LOCATION", "India")
+            count = _env_int("FILI_DAILY_PROSPECTOR_MAX_LEADS", 10, 1, 25)
+            result = run_async(execute_campaign(
+                target, location, count, "Daily Prospector", "web_search", None, SCHEDULER_OWNER,
+            ))
+            STATE["last_daily_run"] = {
+                "success": bool(result.get("success")),
+                "lead_count": len(result.get("leads", [])),
+            }
+    except CampaignBusy:
+        logging.warning("Daily prospector skipped because a campaign slot is busy.")
     except Exception:
         logging.exception("Daily prospecting run failed")
         STATE["last_daily_run"] = {"success": False, "lead_count": 0}
-    finally:
-        STATE["campaign_running"] = False
-        CAMPAIGN_LOCK.release()
 
 
 def main():

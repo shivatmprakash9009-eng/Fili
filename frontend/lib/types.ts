@@ -60,7 +60,8 @@ export type Lead = {
 export type CampaignPayload = {
   target: string;
   location: string;
-  location_scope: { country: string; country_code: string; state: string; state_code: string; city: string };
+  /** Omitted when no city was selected; the engine then runs unscoped discovery. */
+  location_scope?: { country: string; country_code: string; state: string; state_code: string; city: string };
   max_leads: number;
   campaign_name: string;
   platform: "apollo" | "google_maps" | "indiamart" | "linkedin" | "web_search" | "github" | "hacker_news" | "domain_scraper";
