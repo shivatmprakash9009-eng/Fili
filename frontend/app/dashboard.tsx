@@ -350,15 +350,22 @@ function CampaignDialog({ open, busy, error, onClose, onSubmit }: {
                   </div>
                 )}
               </div>
-              <label className="field-group">
-                <span>Maximum prospects</span>
-                <select value={count} onChange={(e)=>setCount(e.target.value)}>
-                  <option value="3">3 prospects</option>
-                  <option value="5">5 prospects</option>
-                  <option value="10">10 prospects</option>
-                  <option value="25">25 prospects</option>
-                </select>
-              </label>
+              {isDomainSource ? (
+                <div className="source-extraction-note">
+                  <ShieldCheck size={15}/>
+                  <span><strong>Single-domain extraction</strong> — Fili inspects the homepage and selected public contact/about pages. It does not search for unrelated companies.</span>
+                </div>
+              ) : (
+                <label className="field-group">
+                  <span>Maximum prospects</span>
+                  <select value={count} onChange={(e)=>setCount(e.target.value)}>
+                    <option value="3">3 prospects</option>
+                    <option value="5">5 prospects</option>
+                    <option value="10">10 prospects</option>
+                    <option value="25">25 prospects</option>
+                  </select>
+                </label>
+              )}
               {error && <div className="form-error"><CircleAlert size={16}/>{error}</div>}
               <div className="modal-footnote"><ShieldCheck size={15}/> Outreach remains draft-only. Review prospect sources before contacting.</div>
               <div className="modal-actions">
